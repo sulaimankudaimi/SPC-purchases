@@ -1,0 +1,6 @@
+{
+  "name": "منظومة المشتريات",
+  "description": "منظومة المشتريات - تطبيق إدارة وتوثيق طلبات الشراء وسجل الشراء المحلي لدائرة الإمداد والتوريد",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

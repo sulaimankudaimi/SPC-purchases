@@ -1,0 +1,47 @@
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3000 --host=0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "node -e 'console.log(\"In-app harness available at #/selftest\")'",
+    "e2e": "echo 'Playwright / electron e2e'",
+    "dist": "echo 'Run on Windows CI runner with electron-builder'",
+    "phase0:check": "node scripts/phase0-check.mjs",
+    "phase0:extract": "node scripts/extract-assets.mjs"
+  },
+  "dependencies": {
+    "@google/genai": "2.30.0",
+    "@supabase/supabase-js": "2.118.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@vitejs/plugin-react": "6.1.2",
+    "dotenv": "17.4.2",
+    "express": "4.22.3",
+    "lucide-react": "0.546.0",
+    "motion": "12.43.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router-dom": "7.18.4",
+    "recharts": "3.10.1",
+    "vite": "8.3.5",
+    "xlsx": "0.18.5",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "4.17.25",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "autoprefixer": "10.6.1",
+    "esbuild": "0.25.12",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

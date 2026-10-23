@@ -1,0 +1,25 @@
+name: phase0-check
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - name: write env files (secrets never printed)
+        env:
+          DEV_URL: ${{ secrets.DEV_SUPABASE_URL }}
+          DEV_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
+          PROD_URL: ${{ secrets.PROD_SUPABASE_URL }}
+          PROD_KEY: ${{ secrets.PROD_SUPABASE_ANON_KEY }}
+          T_EMAIL: ${{ secrets.SUPABASE_TEST_EMAIL }}
+          T_PASS: ${{ secrets.SUPABASE_TEST_PASSWORD }}
+        run: |
+          printf 'DEV_SUPABASE_URL=%s\nDEV_SUPABASE_ANON_KEY=%s\nPROD_SUPABASE_URL=%s\nPROD_SUPABASE_ANON_KEY=%s\nSUPABASE_TEST_EMAIL=%s\nSUPABASE_TEST_PASSWORD=%s\n' "$DEV_URL" "$DEV_KEY" "$PROD_URL" "$PROD_KEY" "$T_EMAIL" "$T_PASS" > .env.local
+          : > .env.import
+      - run: node scripts/phase0-check.mjs

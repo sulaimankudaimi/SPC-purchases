@@ -1,0 +1,27 @@
+appId: com.spc.procurement
+productName: منظومة المشتريات
+directories:
+  output: dist
+  buildResources: assets
+
+files:
+  - out/**/*
+  - assets/**/*
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icon.ico
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: منظومة المشتريات
+  uninstallDisplayName: منظومة المشتريات
+  deleteAppDataOnUninstall: false

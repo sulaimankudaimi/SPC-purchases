@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build and Output
+build/
+dist/
+out/
+coverage/
+
+# Private Data
+data-private/
+.temp_xlsx*
+
+# System and logs
+.DS_Store
+*.log
+
+# Environment variables (allow examples)
+.env
+.env.*
+!.env.example
+!.env.import.example

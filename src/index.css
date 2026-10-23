@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+/* تعريف خطوط الاستمارة والواجهة (قرار D7) */
+@font-face {
+  font-family: 'Sakkal Majalla';
+  src: local('Sakkal Majalla'), local('SakkalMajalla');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Sakkal Majalla';
+  src: local('Sakkal Majalla Bold'), local('SakkalMajalla-Bold');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Amiri';
+  src: url('/assets/fonts/Amiri-Regular.ttf') format('truetype'),
+       local('Amiri');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Amiri';
+  src: url('/assets/fonts/Amiri-Bold.ttf') format('truetype'),
+       local('Amiri-Bold'), local('Amiri Bold');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  font-family: 'Sakkal Majalla', 'Amiri', 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
+  direction: rtl;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f8fafc;
+  color: #0f172a;
+  direction: rtl;
+  text-align: right;
+  font-family: 'Sakkal Majalla', 'Amiri', 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
+}
