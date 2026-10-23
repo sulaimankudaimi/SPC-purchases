@@ -19,6 +19,8 @@ export interface IPlatformOutbox {
 
 export interface IPlatformFile {
   saveFile(filename: string, content: Blob | string | Uint8Array, mimeType?: string): Promise<{ success: boolean; path?: string }>;
+  printHtml?(html: string): Promise<{ success: boolean; error?: string }>;
+  exportPrHtml?(code: string, html: string): Promise<{ success: boolean; path?: string }>;
 }
 
 export interface IPlatform {
@@ -34,29 +36,44 @@ export interface IPlatform {
 // ---------------------------------------------------------------------------
 class BrowserPlatform implements IPlatform {
   readonly isElectron = false;
+  private memoryStore = new Map<string, string>();
+
+  private getStorage(): { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } {
+    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+      return window.localStorage;
+    }
+    if (typeof localStorage !== 'undefined') {
+      return localStorage;
+    }
+    return {
+      getItem: (k: string) => this.memoryStore.get(k) ?? null,
+      setItem: (k: string, v: string) => { this.memoryStore.set(k, v); },
+      removeItem: (k: string) => { this.memoryStore.delete(k); }
+    };
+  }
 
   async ping(): Promise<string> {
     return 'pong';
   }
 
   session: IPlatformSession = {
-    async get(key: string): Promise<string | null> {
+    get: async (key: string): Promise<string | null> => {
       try {
-        return localStorage.getItem(`spc_session_${key}`);
+        return this.getStorage().getItem(`spc_session_${key}`);
       } catch {
         return null;
       }
     },
-    async set(key: string, value: string): Promise<void> {
+    set: async (key: string, value: string): Promise<void> => {
       try {
-        localStorage.setItem(`spc_session_${key}`, value);
+        this.getStorage().setItem(`spc_session_${key}`, value);
       } catch (err) {
-        console.warn('فشل حفظ الجلسة في localStorage', err);
+        console.warn('فشل حفظ الجلسة في منصة التخزين', err);
       }
     },
-    async remove(key: string): Promise<void> {
+    remove: async (key: string): Promise<void> => {
       try {
-        localStorage.removeItem(`spc_session_${key}`);
+        this.getStorage().removeItem(`spc_session_${key}`);
       } catch {
         // تجاهل
       }
@@ -64,35 +81,35 @@ class BrowserPlatform implements IPlatform {
   };
 
   outbox: IPlatformOutbox = {
-    async getQueue(): Promise<any[]> {
+    getQueue: async (): Promise<any[]> => {
       try {
-        const raw = localStorage.getItem('spc_outbox_queue');
+        const raw = this.getStorage().getItem('spc_outbox_queue');
         return raw ? JSON.parse(raw) : [];
       } catch {
         return [];
       }
     },
-    async enqueue(item: any): Promise<void> {
+    enqueue: async (item: any): Promise<void> => {
       try {
-        const current = await this.getQueue();
+        const current = await this.outbox.getQueue();
         const updated = [...current, { ...item, _enqueuedAt: Date.now() }];
-        localStorage.setItem('spc_outbox_queue', JSON.stringify(updated));
+        this.getStorage().setItem('spc_outbox_queue', JSON.stringify(updated));
       } catch (err) {
         console.warn('فشل الإضافة إلى صندوق الصادر', err);
       }
     },
-    async dequeue(id: string): Promise<void> {
+    dequeue: async (id: string): Promise<void> => {
       try {
-        const current = await this.getQueue();
+        const current = await this.outbox.getQueue();
         const updated = current.filter((item) => item.id !== id && item._id !== id);
-        localStorage.setItem('spc_outbox_queue', JSON.stringify(updated));
+        this.getStorage().setItem('spc_outbox_queue', JSON.stringify(updated));
       } catch {
         // تجاهل
       }
     },
-    async clear(): Promise<void> {
+    clear: async (): Promise<void> => {
       try {
-        localStorage.removeItem('spc_outbox_queue');
+        this.getStorage().removeItem('spc_outbox_queue');
       } catch {
         // تجاهل
       }
@@ -125,6 +142,46 @@ class BrowserPlatform implements IPlatform {
       } catch (err: any) {
         return { success: false, path: err?.message };
       }
+    },
+    async printHtml(html: string): Promise<{ success: boolean; error?: string }> {
+      try {
+        if (typeof window === 'undefined' || typeof document === 'undefined') {
+          return { success: false, error: 'نافذة المتصفح غير متاحة للطباعة' };
+        }
+        const printFrame = document.createElement('iframe');
+        printFrame.style.position = 'fixed';
+        printFrame.style.right = '0';
+        printFrame.style.bottom = '0';
+        printFrame.style.width = '0';
+        printFrame.style.height = '0';
+        printFrame.style.border = '0';
+        document.body.appendChild(printFrame);
+        const doc = printFrame.contentWindow?.document;
+        if (doc) {
+          doc.open();
+          doc.write(html);
+          doc.close();
+          setTimeout(() => {
+            try {
+              printFrame.contentWindow?.focus();
+              printFrame.contentWindow?.print();
+            } finally {
+              setTimeout(() => {
+                if (document.body.contains(printFrame)) {
+                  document.body.removeChild(printFrame);
+                }
+              }, 2000);
+            }
+          }, 350);
+        }
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err?.message };
+      }
+    },
+    async exportPrHtml(code: string, html: string): Promise<{ success: boolean; path?: string }> {
+      const filename = `${code.replace(/[/\\?%*:|"<>]/g, '_')}.html`;
+      return this.saveFile(filename, html, 'text/html;charset=utf-8');
     }
   };
 }
@@ -215,9 +272,24 @@ class ElectronPlatform implements IPlatform {
       if (api?.file?.saveFile) {
         return await api.file.saveFile(filename, content, mimeType);
       }
-      // بديل حفظ عبر المتصفح في حال عدم توفر دالة native
       const browser = new BrowserPlatform();
       return await browser.file.saveFile(filename, content, mimeType);
+    },
+    printHtml: async (html: string) => {
+      const api = (window as any)?.api;
+      if (api?.pdf?.printHtml) {
+        return await api.pdf.printHtml(html);
+      }
+      const browser = new BrowserPlatform();
+      return await browser.file.printHtml!(html);
+    },
+    exportPrHtml: async (code: string, html: string) => {
+      const api = (window as any)?.api;
+      if (api?.pdf?.exportPrHtml) {
+        return await api.pdf.exportPrHtml(code, html);
+      }
+      const browser = new BrowserPlatform();
+      return await browser.file.exportPrHtml!(code, html);
     }
   };
 }

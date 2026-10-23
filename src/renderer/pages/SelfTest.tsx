@@ -10,7 +10,12 @@ import { registerPhase0Tests } from '../../../tests/cases/phase0';
 import { registerPhase1Tests } from '../../../tests/cases/phase1';
 import { registerPhase2Tests } from '../../../tests/cases/phase2';
 import { registerPhase3Tests } from '../../../tests/cases/phase3';
-import { Play, Copy, Check, ArrowRight, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
+import { registerPhase4Tests } from '../../../tests/cases/phase4';
+import { registerPhase5Tests } from '../../../tests/cases/phase5';
+import { registerPhase6Tests } from '../../../tests/cases/phase6';
+import { registerPhase7Tests } from '../../../tests/cases/phase7';
+import PrTemplatePreview from '../components/PrTemplatePreview';
+import { Play, Copy, Check, ArrowRight, ShieldCheck, AlertCircle, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function SelfTest() {
@@ -24,6 +29,10 @@ export default function SelfTest() {
     registerPhase1Tests();
     registerPhase2Tests();
     registerPhase3Tests();
+    registerPhase4Tests();
+    registerPhase5Tests();
+    registerPhase6Tests();
+    registerPhase7Tests();
   }, []);
 
   const handleRunTests = async () => {
@@ -35,6 +44,10 @@ export default function SelfTest() {
       registerPhase1Tests();
       registerPhase2Tests();
       registerPhase3Tests();
+      registerPhase4Tests();
+      registerPhase5Tests();
+      registerPhase6Tests();
+      registerPhase7Tests();
       const testResults = await runAllTests();
       setResults(testResults);
     } finally {
@@ -72,13 +85,22 @@ export default function SelfTest() {
               <p className="text-sm text-slate-500">فحص حالات القبول الآلية للمراحل داخل بيئة التشغيل الفعلية</p>
             </div>
           </div>
-          <Link
-            to="/"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
-          >
-            <span>العودة للرئيسية</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/tools/import"
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+              <span>أداة استيراد السجل (#/tools/import)</span>
+            </Link>
+            <Link
+              to="/"
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
+            >
+              <span>العودة للرئيسية</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
 
         {/* أزرار التحكم والإحصائيات */}
@@ -178,6 +200,9 @@ export default function SelfTest() {
             </table>
           </div>
         </div>
+
+        {/* معاينة قالب استمارة طلب الشراء المعتمدة */}
+        <PrTemplatePreview />
       </div>
     </div>
   );
