@@ -14,6 +14,10 @@ import { registerPhase4Tests } from '../../../tests/cases/phase4';
 import { registerPhase5Tests } from '../../../tests/cases/phase5';
 import { registerPhase6Tests } from '../../../tests/cases/phase6';
 import { registerPhase7Tests } from '../../../tests/cases/phase7';
+import { registerPhase8Tests } from '../../../tests/cases/phase8';
+import { registerPhase9Tests } from '../../../tests/cases/phase9';
+import { registerPhase10Tests } from '../../../tests/cases/phase10';
+import { registerFix1Tests } from '../../../tests/cases/fix1';
 import PrTemplatePreview from '../components/PrTemplatePreview';
 import { Play, Copy, Check, ArrowRight, ShieldCheck, AlertCircle, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -33,6 +37,10 @@ export default function SelfTest() {
     registerPhase5Tests();
     registerPhase6Tests();
     registerPhase7Tests();
+    registerPhase8Tests();
+    registerPhase9Tests();
+    registerPhase10Tests();
+    registerFix1Tests();
   }, []);
 
   const handleRunTests = async () => {
@@ -48,6 +56,10 @@ export default function SelfTest() {
       registerPhase5Tests();
       registerPhase6Tests();
       registerPhase7Tests();
+      registerPhase8Tests();
+      registerPhase9Tests();
+      registerPhase10Tests();
+      registerFix1Tests();
       const testResults = await runAllTests();
       setResults(testResults);
     } finally {

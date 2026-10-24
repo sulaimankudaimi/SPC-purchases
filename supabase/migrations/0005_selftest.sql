@@ -95,3 +95,55 @@ $$;
 
 -- السماح باستدعاء دالة الفحص الذاتي للمشروع التجريبي
 grant execute on function selftest_schema() to anon, authenticated;
+
+-- 6. دالة فحص وجود الفهارس الأربعة المعتمدة للأداء (F1.1) عبر pg_indexes
+create or replace function selftest_indexes()
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_indexes jsonb;
+begin
+  select coalesce(jsonb_agg(
+    jsonb_build_object(
+      'tablename', tablename,
+      'indexname', indexname,
+      'indexdef', indexdef
+    )
+  ), '[]'::jsonb)
+  into v_indexes
+  from pg_indexes
+  where schemaname = 'public';
+
+  return v_indexes;
+end;
+$$;
+
+grant execute on function selftest_indexes() to anon, authenticated;
+
+-- 7. دالة فحص سياسات الأمان RLS لجدول سجل التدقيق (F1.5) للتأكد من عدم وجود update/delete
+create or replace function selftest_audit_policies()
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_policies jsonb;
+begin
+  select coalesce(jsonb_agg(
+    jsonb_build_object(
+      'policyname', policyname,
+      'cmd', cmd,
+      'roles', roles
+    )
+  ), '[]'::jsonb)
+  into v_policies
+  from pg_policies
+  where schemaname = 'public' and tablename = 'audit_log';
+
+  return v_policies;
+end;
+$$;
+
+grant execute on function selftest_audit_policies() to anon, authenticated;

@@ -1,0 +1,55 @@
+name: build-windows-exe
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Verify package versions via npm view (Rule 10 / D21)
+        run: |
+          npm view electron version
+          npm view react version
+          npm view @supabase/supabase-js version
+          npm view recharts version
+          npm view zod version
+          npm view xlsx version
+
+      - name: TypeScript Typecheck (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Generate assets, fonts, and NSIS icon (assets/icon.ico)
+        run: node scripts/generate-assets.mjs
+
+      - name: Run deferred Electron tests (E-1, E-2, E-3, E-4)
+        run: npx tsx scripts/run-electron-tests.ts
+
+      - name: Build application bundle
+        run: npm run build
+
+      - name: Build Windows NSIS Installer (EXE via electron-builder)
+        run: npx electron-builder --win --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Installer Artifact (Windows EXE)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SPC-Purchases-Setup-EXE
+          path: dist/*.exe
+          if-no-files-found: warn

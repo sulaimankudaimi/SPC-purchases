@@ -48,12 +48,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
     navigate('/login');
   };
 
+  const isDevToolsEnabled = import.meta.env.DEV || import.meta.env.VITE_DEV_TOOLS === 'true';
+
   const navItems = [
     { to: '/', label: 'لوحة التحكم', icon: LayoutDashboard },
     { to: '/new-request', label: 'طلب جديد', icon: FilePlus2, badge: pendingCount },
     { to: '/register', label: 'السجل', icon: FileSpreadsheet },
     { to: '/settings', label: 'الإعدادات', icon: Settings },
-    { to: '/selftest', label: 'الفحص الذاتي', icon: Terminal },
+    ...(isDevToolsEnabled ? [{ to: '/selftest', label: 'الفحص الذاتي', icon: Terminal }] : []),
   ];
 
   return (

@@ -15,6 +15,9 @@ import ImportTool from './renderer/tools/ImportTool';
 import AppLayout from './renderer/components/AppLayout';
 import ProtectedRoute from './renderer/components/ProtectedRoute';
 
+// التحقق من وضع التطوير أو أعلام أدوات التطوير لاستبعاد مسارات الفحص في حزمة الإنتاج
+const isDevToolsEnabled = import.meta.env.DEV || import.meta.env.VITE_DEV_TOOLS === 'true';
+
 export default function App() {
   return (
     <HashRouter>
@@ -22,11 +25,13 @@ export default function App() {
         {/* صفحة تسجيل الدخول */}
         <Route path="/login" element={<Login />} />
 
-        {/* لوحة الفحص الذاتي (مفتوحة دائماً للمعاينة وفحص البوابة) */}
-        <Route path="/selftest" element={<SelfTest />} />
-
-        {/* أداة استيراد السجل القديم (المرحلة 7) */}
-        <Route path="/tools/import" element={<ImportTool />} />
+        {/* لوحة الفحص الذاتي وأداة الاستيراد (متاحة في وضع التطوير فقط ومستبعدة في حزمة الإنتاج النهائية) */}
+        {isDevToolsEnabled ? (
+          <>
+            <Route path="/selftest" element={<SelfTest />} />
+            <Route path="/tools/import" element={<ImportTool />} />
+          </>
+        ) : null}
 
         {/* المسارات المحمية مع الهيكل والتنقل RTL */}
         <Route

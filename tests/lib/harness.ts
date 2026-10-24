@@ -121,6 +121,13 @@ export function getRegisteredCases(): TestCase[] {
 }
 
 /**
+ * إعادة تعيين سجل الحالات المسجلة
+ */
+export function resetRegistry(): void {
+  registry.length = 0;
+}
+
+/**
  * تشغيل جميع الاختبارات المسجلة
  */
 export async function runAllTests(): Promise<TestResult[]> {

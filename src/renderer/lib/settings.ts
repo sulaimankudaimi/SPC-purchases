@@ -4,7 +4,7 @@
  * متوافقة مع DATA_MODEL.md، و SPEC §1.1، والقرارات D10 و D11 و D19
  */
 
-import { supabase, isConfigured } from './supabase';
+import { supabase, isConfigured, isOfflineDemoAllowed } from './supabase';
 
 export interface SignatoriesSettings {
   requester: string;       // 1. الطالب
@@ -64,8 +64,22 @@ export const DEFAULT_SETTINGS: AppSettings = {
  */
 export async function getSettings(): Promise<AppSettings> {
   if (!isConfigured) {
+    if (!isOfflineDemoAllowed) {
+      return { ...DEFAULT_SETTINGS };
+    }
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const raw = window.localStorage.getItem('spc_local_settings');
+        if (raw) {
+          return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+        }
+      }
+    } catch {
+      // ignore
+    }
     return { ...DEFAULT_SETTINGS };
   }
+
   try {
     const { data, error } = await supabase
       .from('settings')
@@ -108,6 +122,23 @@ export async function updateSetting<K extends keyof AppSettings>(
   key: K,
   value: AppSettings[K]
 ): Promise<{ success: boolean; error?: string }> {
+  if (!isConfigured) {
+    if (!isOfflineDemoAllowed) {
+      return { success: false, error: 'التطبيق غير مهيّأ، راجع المسؤول' };
+    }
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const raw = window.localStorage.getItem('spc_local_settings');
+        const cur = raw ? JSON.parse(raw) : { ...DEFAULT_SETTINGS };
+        cur[key] = value;
+        window.localStorage.setItem('spc_local_settings', JSON.stringify(cur));
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message };
+    }
+  }
+
   try {
     const { error } = await supabase
       .from('settings')

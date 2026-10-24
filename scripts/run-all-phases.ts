@@ -12,9 +12,13 @@ import { registerPhase4Tests } from '../tests/cases/phase4';
 import { registerPhase5Tests } from '../tests/cases/phase5';
 import { registerPhase6Tests } from '../tests/cases/phase6';
 import { registerPhase7Tests } from '../tests/cases/phase7';
+import { registerPhase8Tests } from '../tests/cases/phase8';
+import { registerPhase9Tests } from '../tests/cases/phase9';
+import { registerPhase10Tests } from '../tests/cases/phase10';
+import { registerFix1Tests } from '../tests/cases/fix1';
 
 async function main() {
-  console.log('--- تشغيل كافة اختبارات المراحل (0 إلى 7) ---');
+  console.log('--- تشغيل كافة اختبارات المراحل (0 إلى 10) مع المرحلة F1 ---');
   registerPhase0Tests();
   registerPhase1Tests();
   registerPhase2Tests();
@@ -23,6 +27,10 @@ async function main() {
   registerPhase5Tests();
   registerPhase6Tests();
   registerPhase7Tests();
+  registerPhase8Tests();
+  registerPhase9Tests();
+  registerPhase10Tests();
+  registerFix1Tests();
 
   const results = await runAllTests();
   console.log(formatSummary(results));

@@ -4,20 +4,22 @@
  * - تسجيل الدخول بالبريد وكلمة المرور فقط
  * - رسائل خطأ عربية موحّدة
  * - بلا أي رابط أو نموذج لإنشاء حساب جديد (التسجيل العام معطّل وفق القرار D5)
+ * - عند عدم تهيئة Supabase وعدم السماح بالوضع التجريبي: شاشة خطأ إعداد «التطبيق غير مهيّأ، راجع المسؤول»
  */
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, Mail, AlertCircle, ArrowLeft, Shield } from 'lucide-react';
+import { Lock, Mail, AlertCircle, ArrowLeft, Shield, AlertTriangle } from 'lucide-react';
 import { signIn, getCurrentSession } from '../lib/auth';
+import { isConfigured, isOfflineDemoAllowed } from '../lib/supabase';
 import { platform } from '../lib/platform';
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('user@spc.sy');
+  const [password, setPassword] = useState('spc2026pass');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -29,13 +31,45 @@ export default function Login() {
       }
     });
 
-    // استعادة آخر بريد مستخدم
+    // استعادة آخر بريد مستخدم إن وُجد
     platform.session.get('spc_last_email').then((lastEmail) => {
       if (lastEmail) {
         setEmail(lastEmail);
       }
     });
   }, [navigate]);
+
+  // إذا لم يكن Supabase مهيأً ولم يُسمح بالوضع التجريبي المحلي: شاشة خطأ إعداد واضحة
+  if (!isConfigured && !isOfflineDemoAllowed) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-6 text-slate-100 font-sans select-none" dir="rtl">
+        <div className="w-full max-w-md bg-slate-800/95 border border-rose-500/40 rounded-2xl p-8 shadow-2xl backdrop-blur-sm space-y-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-rose-950/60 border border-rose-800/80 text-rose-400 flex items-center justify-center mx-auto shadow-lg">
+            <AlertTriangle className="w-8 h-8 text-rose-400" />
+          </div>
+
+          <div>
+            <h1 className="text-xl font-bold text-white tracking-tight">
+              خطأ في إعداد المنظومة
+            </h1>
+            <p className="text-rose-300 font-bold mt-3 text-base">
+              التطبيق غير مهيّأ، راجع المسؤول
+            </p>
+            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+              لم يتم العثور على مفاتيح الاتصال بخادم Supabase (VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY). يرجى مراجعة مسؤول النظام لضبط متغيرات البيئة قبل تشغيل التطبيق.
+            </p>
+          </div>
+
+          <div className="pt-4 border-t border-slate-700/60">
+            <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+              <Shield className="w-3.5 h-3.5 text-slate-500" />
+              <span>منظومة إدارة المشتريات — مديرية حقول دير الزور</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

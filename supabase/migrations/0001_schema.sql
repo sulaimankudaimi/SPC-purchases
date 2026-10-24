@@ -72,7 +72,7 @@ create table audit_log (
 );
 
 -- فهارس تحسين الأداء
-create index if unchecked idx_requests_request_date on requests(request_date);
-create index if unchecked idx_requests_status on requests(status);
-create index if unchecked idx_requests_deleted_at on requests(deleted_at);
-create index if unchecked idx_request_items_request_id on request_items(request_id);
+create index if not exists idx_requests_request_date on requests(request_date);
+create index if not exists idx_requests_status on requests(status);
+create index if not exists idx_requests_deleted_at on requests(deleted_at);
+create index if not exists idx_request_items_request_id on request_items(request_id);

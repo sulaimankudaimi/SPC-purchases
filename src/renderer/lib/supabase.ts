@@ -11,20 +11,17 @@ import { platform } from './platform';
 
 const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : ({} as any);
 
-export const isConfigured: boolean = Boolean(
-  (env.VITE_SUPABASE_URL || env.DEV_SUPABASE_URL) &&
-  (env.VITE_SUPABASE_ANON_KEY || env.DEV_SUPABASE_ANON_KEY)
+export const SUPABASE_URL: string = (env.VITE_SUPABASE_URL || '').trim();
+export const SUPABASE_ANON_KEY: string = (env.VITE_SUPABASE_ANON_KEY || '').trim();
+
+export const isConfigured: boolean = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+
+/**
+ * الوضع التجريبي المحلي مسموح فقط عند DEV === true و VITE_ALLOW_OFFLINE_DEMO === 'true'
+ */
+export const isOfflineDemoAllowed: boolean = Boolean(
+  env.DEV === true && env.VITE_ALLOW_OFFLINE_DEMO === 'true'
 );
-
-export const SUPABASE_URL: string =
-  env.VITE_SUPABASE_URL ||
-  env.DEV_SUPABASE_URL ||
-  'https://mock.supabase.co';
-
-export const SUPABASE_ANON_KEY: string =
-  env.VITE_SUPABASE_ANON_KEY ||
-  env.DEV_SUPABASE_ANON_KEY ||
-  'mock-anon-key';
 
 /**
  * محوّل تخزين الجلسات المخصص المربوط بـ platform.session
@@ -56,12 +53,20 @@ export const platformStorageAdapter = {
 
 /**
  * عميل Supabase الرئيسي المهيأ مع التخزين الآمن
+ * عند عدم التهيئة، نستخدم مساراً بدائياً آمناً لمنع انهيار التهيئة
  */
-export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    storage: platformStorageAdapter,
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false
+const fallbackUrl = 'https://spc-unconfigured.local';
+const fallbackKey = 'spc-unconfigured-anon-token';
+
+export const supabase: SupabaseClient = createClient(
+  isConfigured ? SUPABASE_URL : fallbackUrl,
+  isConfigured ? SUPABASE_ANON_KEY : fallbackKey,
+  {
+    auth: {
+      storage: platformStorageAdapter,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false
+    }
   }
-});
+);

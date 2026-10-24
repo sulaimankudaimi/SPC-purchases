@@ -14,7 +14,12 @@
     "e2e": "echo 'Playwright / electron e2e'",
     "dist": "echo 'Run on Windows CI runner with electron-builder'",
     "phase0:check": "node scripts/phase0-check.mjs",
-    "phase0:extract": "node scripts/extract-assets.mjs"
+    "phase0:extract": "node scripts/extract-assets.mjs",
+    "phase8:test": "tsx scripts/run-phase8-tests.ts",
+    "phase9:test": "tsx scripts/run-phase9-tests.ts",
+    "phase10:test": "tsx scripts/run-phase10-tests.ts",
+    "electron:test": "tsx scripts/run-electron-tests.ts",
+    "fix1:test": "tsx scripts/run-fix1-tests.ts"
   },
   "dependencies": {
     "@google/genai": "2.30.0",

@@ -1,9 +1,10 @@
 /**
  * src/renderer/tools/ImportTool.tsx
  * أداة استيراد سجل الشراء المحلي القديم (مسار #/tools/import)
- * - قراءة ملف Excel عبر SheetJS
+ * - قراءة ملف Excel عبر SheetJS حصراً بعد اختياره من المستخدم
  * - وضعان: «تجربة» (Dry Run لا يكتب) و «تنفيذ» (Commit يكتب بجلسة المستخدم الموثَّق بلا service_role)
  * - عرض ومطابقة الأرقام الذهبية (51 طلباً، 158 مادة، 1,974,220 ل.س)
+ * - لا محاكاة تنفيذ بلا Supabase (يتطلب تهيئة صريحة)
  * - تقرير تفصيلي قابل للنسخ: الوحدات، اقتراحات الأسماء، السطور المعلمة للمراجعة
  */
 
@@ -12,35 +13,37 @@ import * as XLSX from 'xlsx';
 import { 
   FileSpreadsheet, 
   Upload, 
-  Play, 
   CheckCircle2, 
   AlertCircle, 
   Copy, 
   Check, 
   ArrowRight, 
   Database, 
-  AlertTriangle, 
-  Sparkles 
+  AlertTriangle 
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { parseLegacyRows, ImportResult, ImportReport } from '../../../scripts/import-core';
-import { generateLegacySampleRows } from '../../../scripts/fixtures/legacy-sample';
+import { parseLegacyRows, ImportResult } from '../../../scripts/import-core';
 import { supabase, isConfigured } from '../lib/supabase';
 import { formatMoney } from '../../shared/money';
 
 export default function ImportTool() {
   const [fileName, setFileName] = useState<string | null>(null);
-  const [rawRows, setRawRows] = useState<any[][] | null>(null);
+  const [, setRawRows] = useState<any[][] | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
   const [commitStatus, setCommitStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // معالجة اختيار ملف محلي
+  // معالجة اختيار ملف محلي بصيغة xlsx
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      alert('يرجى اختيار ملف Excel بصيغة xlsx أو xls.');
+      return;
+    }
 
     setFileName(file.name);
     setCommitStatus(null);
@@ -67,31 +70,17 @@ export default function ImportTool() {
     reader.readAsArrayBuffer(file);
   };
 
-  // تحميل العينة المعتمدة فوراً دون الحاجة لملف خارجي
-  const handleLoadSample = () => {
-    setIsProcessing(true);
-    setCommitStatus(null);
-    try {
-      const rows = generateLegacySampleRows();
-      setFileName('سجل_الشراء_المحلي.xlsx (العينة المعتمدة)');
-      setRawRows(rows);
-      const parsed = parseLegacyRows(rows);
-      setImportResult(parsed);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // وضع التنفيذ: كتابة السجلات في قاعدة البيانات بحساب المستخدم الموثق
+  // وضع التنفيذ: كتابة السجلات في قاعدة البيانات بحساب المستخدم الموثق حصراً
   const handleCommit = async () => {
     if (!importResult) return;
     setIsCommitting(true);
     setCommitStatus(null);
 
+    // حظر محاكاة التنفيذ عند عدم ربط Supabase (القرار F2)
     if (!isConfigured) {
       setCommitStatus({
-        success: true,
-        message: 'تم محاكاة التنفيذ بنجاح (بيئة التطوير المحلية دون Supabase). لم يتم استخدام service_role.'
+        success: false,
+        message: 'التطبيق غير مهيّأ، راجع المسؤول (لا يمكن تنفيذ الاستيراد الفعلي دون الاتصال بقاعدة بيانات Supabase).'
       });
       setIsCommitting(false);
       return;
@@ -199,7 +188,7 @@ export default function ImportTool() {
             <div>
               <h1 className="text-xl font-bold text-slate-900">أداة استيراد السجل القديم (Legacy Import)</h1>
               <p className="text-xs text-slate-500 mt-0.5">
-                استيراد سجل الشراء المحلي وفق القواعد Q1–Q9 ومطابقة الأرقام الذهبية (SPEC §1.2)
+                استيراد ملف سجل_الشراء_المحلي.xlsx ومطابقة الأرقام الذهبية (SPEC §1.2)
               </p>
             </div>
           </div>
@@ -213,40 +202,39 @@ export default function ImportTool() {
           </Link>
         </div>
 
-        {/* بطاقة رفع الملف والتحكم */}
+        {/* بطاقة رفع الملف حصراً */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 px-4 py-2.5 bg-[#0F4C5C] hover:bg-[#0c3c49] text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs transition">
-                <Upload className="w-4 h-4" />
-                <span>اختيار ملف سجل_الشراء_المحلي.xlsx</span>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
+            <label className="flex items-center gap-2 px-4 py-2.5 bg-[#0F4C5C] hover:bg-[#0c3c49] text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs transition">
+              <Upload className="w-4 h-4" />
+              <span>اختيار ملف سجل_الشراء_المحلي.xlsx</span>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </label>
 
-              <button
-                type="button"
-                onClick={handleLoadSample}
-                className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold border border-slate-300 cursor-pointer transition"
-              >
-                <Sparkles className="w-4 h-4 text-amber-600" />
-                <span>تحميل العينة المعتمدة (51 طلباً / 158 مادة)</span>
-              </button>
-            </div>
-
-            {fileName && (
+            {fileName ? (
               <span className="text-xs font-mono text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-                {fileName}
+                الملف المختار: {fileName}
+              </span>
+            ) : (
+              <span className="text-xs text-slate-400">
+                يرجى اختيار ملف Excel للبدء في التحليل والتجربة
               </span>
             )}
           </div>
         </div>
 
-        {/* نتيجة الاستيراد والأرقام الذهبية */}
+        {isProcessing && (
+          <div className="p-8 text-center text-slate-500 text-sm">
+            جاري قراءة وتحليل ملف Excel...
+          </div>
+        )}
+
+        {/* نتيجة الاستيراد والأرقام الذهبية: تظهر فقط بعد اختيار ملف صالح */}
         {importResult && (
           <div className="space-y-6">
             {/* بطاقات المقارنة بالأرقام الذهبية */}

@@ -5,11 +5,24 @@
  * - بلا أي واجهة أو دالة لإنشاء مستخدمين جدد (التسجيل العام معطّل وفق القرار D5)
  * - دالة حارس المسارات requireSession (نقية)
  * - أمان: استخدام مفتاح anon فقط وحظر تام لـ service_role
+ * - الوضع التجريبي المحلي محصور فقط بـ DEV === true و VITE_ALLOW_OFFLINE_DEMO === 'true'
  */
 
 import { Session, User, AuthError } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+import { supabase, isConfigured as defaultIsConfigured, isOfflineDemoAllowed as defaultIsOfflineDemoAllowed } from './supabase';
 import { platform } from './platform';
+
+const authListeners = new Set<(session: Session | null) => void>();
+
+function notifyAuthListeners(session: Session | null) {
+  authListeners.forEach((cb) => {
+    try {
+      cb(session);
+    } catch (e) {
+      console.warn('خطأ في إشعار مستمع المصادقة:', e);
+    }
+  });
+}
 
 /**
  * 1. دالة حارس المسارات (نقية - Pure Function)
@@ -96,10 +109,18 @@ export interface AuthResult {
   error?: string;
 }
 
+export interface SignInOptions {
+  isConfigured?: boolean;
+  isOfflineDemoAllowed?: boolean;
+}
+
 /**
  * 3. تسجيل الدخول بالبريد وكلمة المرور
  */
-export async function signIn(credentials: { email: string; password: string }): Promise<AuthResult> {
+export async function signIn(
+  credentials: { email: string; password: string },
+  options?: SignInOptions
+): Promise<AuthResult> {
   const email = (credentials.email || '').trim();
   const password = credentials.password || '';
 
@@ -109,6 +130,49 @@ export async function signIn(credentials: { email: string; password: string }): 
 
   if (!password) {
     return { success: false, error: 'يرجى إدخال كلمة المرور.' };
+  }
+
+  const configured = options?.isConfigured !== undefined ? options.isConfigured : defaultIsConfigured;
+  const demoAllowed = options?.isOfflineDemoAllowed !== undefined ? options.isOfflineDemoAllowed : defaultIsOfflineDemoAllowed;
+
+  // عند عدم تهيئة Supabase
+  if (!configured) {
+    // القاعدة F2: يُمنع الدخول أو إنشاء أي جلسة إذا لم يُسمح بالوضع التجريبي صراحة
+    if (!demoAllowed) {
+      return {
+        success: false,
+        error: 'التطبيق غير مهيّأ، راجع المسؤول'
+      };
+    }
+
+    // يُسمح به فقط عند DEV === true و VITE_ALLOW_OFFLINE_DEMO === 'true'
+    const demoUser: User = {
+      id: 'usr_preview_admin',
+      app_metadata: {},
+      user_metadata: { name: email.split('@')[0] || 'مهندس المشتريات' },
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
+      email: email || 'user@spc.sy'
+    } as User;
+
+    const demoSession: Session = {
+      access_token: 'spc_demo_session_token_dev_only',
+      refresh_token: 'spc_demo_refresh_token',
+      expires_in: 86400 * 7,
+      expires_at: Math.floor(Date.now() / 1000) + 86400 * 7,
+      token_type: 'bearer',
+      user: demoUser
+    };
+
+    await platform.session.set('spc_demo_session', JSON.stringify(demoSession));
+    await platform.session.set('spc_last_email', email);
+    notifyAuthListeners(demoSession);
+
+    return {
+      success: true,
+      session: demoSession,
+      user: demoUser
+    };
   }
 
   try {
@@ -133,6 +197,7 @@ export async function signIn(credentials: { email: string; password: string }): 
 
     // حفظ نسخة موثقة عبر منصة التخزين
     await platform.session.set('spc_last_email', email);
+    notifyAuthListeners(data.session);
 
     return {
       success: true,
@@ -152,18 +217,19 @@ export async function signIn(credentials: { email: string; password: string }): 
  */
 export async function signOut(): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.warn('تنبيه أثناء تسجيل الخروج من Supabase:', error.message);
+    if (defaultIsConfigured) {
+      await supabase.auth.signOut();
     }
   } catch (err) {
-    console.warn('تنبيه أثناء إنهاء الجلسة:', err);
+    console.warn('تنبيه أثناء تسجيل الخروج من Supabase:', err);
   }
 
   try {
     // تنظيف مفاتيح الجلسة المحلية عبر platform
     await platform.session.remove('supabase.auth.token');
     await platform.session.remove('spc_current_session');
+    await platform.session.remove('spc_demo_session');
+    notifyAuthListeners(null);
   } catch (err) {
     // تجاهل خطأ التنظيف
   }
@@ -175,6 +241,24 @@ export async function signOut(): Promise<{ success: boolean; error?: string }> {
  * 5. استعادة الجلسة الحالية
  */
 export async function getCurrentSession(): Promise<Session | null> {
+  if (!defaultIsConfigured) {
+    if (!defaultIsOfflineDemoAllowed) {
+      return null;
+    }
+    try {
+      const raw = await platform.session.get('spc_demo_session');
+      if (raw) {
+        const session = JSON.parse(raw);
+        if (requireSession(session)) {
+          return session;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
   try {
     const { data, error } = await supabase.auth.getSession();
     if (error || !data.session) {
@@ -190,8 +274,18 @@ export async function getCurrentSession(): Promise<Session | null> {
  * 6. الاستماع لتغيرات حالة الجلسة
  */
 export function onAuthStateChange(callback: (session: Session | null) => void) {
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-    callback(requireSession(session) ? session : null);
-  });
-  return data.subscription;
+  authListeners.add(callback);
+  let sub: any = null;
+  if (defaultIsConfigured) {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      callback(requireSession(session) ? session : null);
+    });
+    sub = data?.subscription;
+  }
+  return {
+    unsubscribe: () => {
+      authListeners.delete(callback);
+      sub?.unsubscribe?.();
+    }
+  };
 }

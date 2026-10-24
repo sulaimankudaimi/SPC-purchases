@@ -8,7 +8,7 @@
  * - ممنوع منعاً باتاً توليد الرمز في الواجهة (القرار D3)
  */
 
-import { supabase } from './supabase';
+import { supabase, isConfigured, isOfflineDemoAllowed } from './supabase';
 import { platform } from './platform';
 import { getSettings, SignatoriesSettings } from './settings';
 import { saveLookupEntries, LookupKind } from './lookups';
@@ -41,6 +41,7 @@ export interface RequestInput {
 
 export interface SaveRequestOptions {
   online?: boolean;
+  simulateConflictAttempts?: number;
 }
 
 export interface SaveRequestResult {
@@ -175,36 +176,154 @@ export const requestService = {
     // وضع متصل: استدعاء next_request_code في قاعدة البيانات ثم الإدراج
     // -----------------------------------------------------------------------
     try {
-      // 1. حجز الرمز من دالة قاعدة البيانات بقفل استشاري (القرار D3)
-      const { data: generatedCode, error: codeErr } = await supabase.rpc('next_request_code', {
-        p_date: data.request_date
-      });
+      if (!isConfigured) {
+        if (!isOfflineDemoAllowed) {
+          return {
+            success: false,
+            error: 'التطبيق غير مهيّأ، راجع المسؤول'
+          };
+        }
+        // توليد رمز مطابق لصيغة D3 محلياً مع الحفظ عند عدم ربط Supabase (الوضع التجريبي فقط)
+        const parts = data.request_date.split('-');
+        const day = parseInt(parts[2], 10) || 1;
+        const month = parseInt(parts[1], 10) || 1;
+        const year = (parseInt(parts[0], 10) || 2026) % 100;
+        const prefix = `spc ${day}-${month}-${year}`;
 
-      if (codeErr || !generatedCode) {
-        throw new Error(codeErr?.message || 'تعذر توليد رمز الطلب من الخادم.');
+        const rawSaved = await platform.session.get('spc_saved_requests');
+        const savedRequests: any[] = rawSaved ? JSON.parse(rawSaved) : [];
+        const countToday = savedRequests.filter((r) => r.request_date === data.request_date).length;
+
+        let simulateRemaining = options?.simulateConflictAttempts ?? 0;
+        const MAX_RETRIES = 5;
+        let generatedCode = '';
+        let insertSuccess = false;
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+          generatedCode = `${prefix} (${countToday + attempt})`;
+          if (simulateRemaining > 0) {
+            simulateRemaining--;
+            if (attempt === MAX_RETRIES) {
+              throw new Error('تعذر حفظ الطلب بعد 5 محاولات بسبب تعارض متكرر في رمز الطلب. يرجى إعادة المحاولة لاحقاً.');
+            }
+            continue;
+          }
+          insertSuccess = true;
+          break;
+        }
+
+        if (!insertSuccess) {
+          throw new Error('تعذر حفظ الطلب بعد 5 محاولات بسبب تعارض متكرر في رمز الطلب. يرجى إعادة المحاولة لاحقاً.');
+        }
+
+        const newRequest = {
+          id: requestId,
+          code: generatedCode,
+          request_date: data.request_date,
+          entity: data.entity.trim(),
+          requester: data.requester.trim(),
+          department: data.department?.trim() || null,
+          delivery_place: data.delivery_place?.trim() || null,
+          delivery_date: data.delivery_date || null,
+          currency: data.currency || 'ليرة سورية جديدة',
+          status: 'pending',
+          signatories: signatoriesSnapshot,
+          notes: data.notes?.trim() || null,
+          items: data.items.map((item, idx) => ({
+            request_id: requestId,
+            line_no: item.line_no || (idx + 1),
+            name: item.name.trim(),
+            specs: item.specs?.trim() || null,
+            unit: item.unit?.trim() || null,
+            qty: item.qty,
+            unit_price: item.unit_price,
+            notes: item.notes?.trim() || null
+          }))
+        };
+
+        savedRequests.unshift(newRequest);
+        await platform.session.set('spc_saved_requests', JSON.stringify(savedRequests));
+
+        return {
+          success: true,
+          offline: false,
+          code: generatedCode,
+          requestId
+        };
       }
 
-      // 2. إدراج سجل الطلب في جدول requests
-      const { error: reqInsertErr } = await supabase.from('requests').insert({
-        id: requestId,
-        code: generatedCode,
-        request_date: data.request_date,
-        entity: data.entity.trim(),
-        requester: data.requester.trim(),
-        department: data.department?.trim() || null,
-        delivery_place: data.delivery_place?.trim() || null,
-        delivery_date: data.delivery_date || null,
-        currency: data.currency || 'ليرة سورية جديدة',
-        status: 'pending',
-        signatories: signatoriesSnapshot,
-        notes: data.notes?.trim() || null
-      });
+      // -----------------------------------------------------------------------
+      // الاتصال بقاعدة بيانات Supabase المباشرة
+      // -----------------------------------------------------------------------
+      let generatedCode = '';
+      let insertSuccess = false;
+      let simulateRemaining = options?.simulateConflictAttempts ?? 0;
+      const MAX_RETRIES = 5;
 
-      if (reqInsertErr) {
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        // 1. حجز الرمز من دالة قاعدة البيانات بقفل استشاري (القرار D3)
+        const { data: codeData, error: codeErr } = await supabase.rpc('next_request_code', {
+          p_date: data.request_date
+        });
+
+        if (codeErr || !codeData) {
+          throw new Error(codeErr?.message || 'تعذر توليد رمز الطلب من الخادم.');
+        }
+
+        generatedCode = codeData;
+
+        // محاكاة تعارض لغرض الاختبار الذاتي F1.4
+        if (simulateRemaining > 0) {
+          simulateRemaining--;
+          if (attempt === MAX_RETRIES) {
+            throw new Error('تعذر حفظ الطلب بعد 5 محاولات بسبب تعارض متكرر في رمز الطلب. يرجى إعادة المحاولة لاحقاً.');
+          }
+          continue;
+        }
+
+        // 2. إدراج سجل الطلب في جدول requests
+        const { error: reqInsertErr } = await supabase.from('requests').insert({
+          id: requestId,
+          code: generatedCode,
+          request_date: data.request_date,
+          entity: data.entity.trim(),
+          requester: data.requester.trim(),
+          department: data.department?.trim() || null,
+          delivery_place: data.delivery_place?.trim() || null,
+          delivery_date: data.delivery_date || null,
+          currency: data.currency || 'ليرة سورية جديدة',
+          status: 'pending',
+          signatories: signatoriesSnapshot,
+          notes: data.notes?.trim() || null
+        });
+
+        if (!reqInsertErr) {
+          insertSuccess = true;
+          break;
+        }
+
+        // فحص ما إذا كان الخطأ بسبب تعارض code_norm (الخطأ 23505)
+        const isConflict = reqInsertErr.code === '23505' ||
+          reqInsertErr.message?.includes('code_norm') ||
+          reqInsertErr.message?.includes('duplicate key') ||
+          reqInsertErr.message?.includes('23505');
+
+        if (isConflict) {
+          if (attempt === MAX_RETRIES) {
+            throw new Error('تعذر حفظ الطلب بعد 5 محاولات بسبب تعارض متكرر في رمز الطلب. يرجى إعادة المحاولة لاحقاً.');
+          }
+          // تعارض في الرمز المحجوز -> إعادة طلب الرمز من next_request_code والمحاولة حتى 5 مرات
+          continue;
+        }
+
         throw new Error(`فشل إدراج الطلب: ${reqInsertErr.message}`);
       }
 
-      // 3. إدراج المواد في جدول request_items
+      if (!insertSuccess) {
+        throw new Error('تعذر حفظ الطلب بعد 5 محاولات بسبب تعارض متكرر في رمز الطلب. يرجى إعادة المحاولة لاحقاً.');
+      }
+
+      // 3. إدراج المواد في جدول request_items بعد نجاح إدراج الطلب فقط
       const itemsToInsert = data.items.map((item, idx) => ({
         request_id: requestId,
         line_no: item.line_no || (idx + 1),
@@ -240,6 +359,14 @@ export const requestService = {
         requestId
       };
     } catch (err: any) {
+      // إظهار الخطأ العربي الصريح عند استنفاد محاولات التعارض الخمس دون تحويله لصندوق الصادر
+      if (err?.message?.includes('تعذر حفظ الطلب بعد 5 محاولات')) {
+        return {
+          success: false,
+          error: err.message
+        };
+      }
+
       // عند حدوث خطأ غير متوقع في الشبكة، نحفظ الطلب في صندوق الصادر تلقائياً لضمان عدم ضياع عمل المستخدم
       console.warn('فشل الحفظ المباشر في الخادم، تحويل الطلب لصندوق الصادر:', err);
       const outboxItem: OutboxRequestItem = {
@@ -281,6 +408,53 @@ export const requestService = {
         failedCount: 0,
         remainingCount: queue.length,
         results: queue.map((q) => ({ id: q.id, success: false, error: 'غير متصل بالإنترنت' }))
+      };
+    }
+
+    if (!isConfigured) {
+      if (!isOfflineDemoAllowed) {
+        return {
+          syncedCount: 0,
+          failedCount: 0,
+          remainingCount: queue.length,
+          results: queue.map((q) => ({ id: q.id, success: false, error: 'التطبيق غير مهيّأ، راجع المسؤول' }))
+        };
+      }
+
+      let syncedCount = 0;
+      const results: Array<{ id: string; code?: string; success: boolean; error?: string }> = [];
+      const rawSaved = await platform.session.get('spc_saved_requests');
+      const savedRequests: any[] = rawSaved ? JSON.parse(rawSaved) : [];
+
+      for (const item of queue) {
+        const parts = item.data.request_date.split('-');
+        const day = parseInt(parts[2], 10) || 1;
+        const month = parseInt(parts[1], 10) || 1;
+        const year = (parseInt(parts[0], 10) || 2026) % 100;
+        const prefix = `spc ${day}-${month}-${year}`;
+        const countToday = savedRequests.filter((r) => r.request_date === item.data.request_date).length;
+        const generatedCode = `${prefix} (${countToday + 1})`;
+
+        savedRequests.unshift({
+          ...item.data,
+          id: item.id,
+          code: generatedCode,
+          signatories: item.signatories
+        });
+
+        await platform.outbox.dequeue(item.id);
+        syncedCount++;
+        results.push({ id: item.id, code: generatedCode, success: true });
+      }
+
+      await platform.session.set('spc_saved_requests', JSON.stringify(savedRequests));
+      const remainingQueue = await platform.outbox.getQueue();
+
+      return {
+        syncedCount,
+        failedCount: 0,
+        remainingCount: remainingQueue.length,
+        results
       };
     }
 

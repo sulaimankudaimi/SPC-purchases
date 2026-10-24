@@ -40,12 +40,10 @@ begin
   v_prefix := 'spc ' || v_day || '-' || v_month || '-' || v_year;
 
   -- حساب التسلسل n التالي لهذا اليوم داخل قاعدة البيانات
-  select coalesce(max(
-    case 
-      when code ~ '\((\d+)\)$' then (regexp_matches(code, '\((\d+)\)$'))[1]::int
-      else 1
-    end
-  ), 0) + 1
+  select coalesce(
+    max(coalesce(nullif(substring(code from '\((\d+)\)\s*$'), '')::int, 1)),
+    0
+  ) + 1
   into v_next_n
   from requests
   where request_date = p_date;

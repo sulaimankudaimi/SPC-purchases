@@ -1,3 +1,11 @@
+# electron-builder.yml
+# إعدادات التغليف وبناء مثبت Windows (NSIS) لتطبيق «منظومة المشتريات» (المرحلة 10)
+# الالتزام بقرارات D1 و D12 و X1 و O3:
+# - بلا توقيع رقمي (D12: تنبيه SmartScreen مقبول في الإصدار الأول)
+# - بلا تحديث تلقائي (D12: التحديث بإعادة التنصيب)
+# - تضمين الخطوط والأصول assets
+# - استبعاد مسارات الاختبارات وأدوات الاستيراد والفحص الذاتي
+
 appId: com.spc.procurement
 productName: منظومة المشتريات
 directories:
@@ -8,6 +16,17 @@ files:
   - out/**/*
   - assets/**/*
   - package.json
+  - "!tests/**"
+  - "!scripts/**"
+  - "!src/renderer/pages/SelfTest.*"
+  - "!src/renderer/tools/ImportTool.*"
+  - "!**/*.map"
+
+extraResources:
+  - from: assets
+    to: assets
+    filter:
+      - "**/*"
 
 win:
   target:
@@ -16,6 +35,8 @@ win:
         - x64
   icon: assets/icon.ico
   artifactName: ${productName}-Setup-${version}.${ext}
+  signAndEditExecutable: false
+  sign: null
 
 nsis:
   oneClick: false
@@ -25,3 +46,8 @@ nsis:
   shortcutName: منظومة المشتريات
   uninstallDisplayName: منظومة المشتريات
   deleteAppDataOnUninstall: false
+  perMachine: false
+  runAfterFinish: true
+
+# تعطيل أي نشر أو تحديث تلقائي وفق القرار D12
+publish: null
