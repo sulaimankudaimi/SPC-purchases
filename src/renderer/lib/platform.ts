@@ -269,6 +269,9 @@ class ElectronPlatform implements IPlatform {
   file: IPlatformFile = {
     saveFile: async (filename: string, content: Blob | string | Uint8Array, mimeType?: string) => {
       const api = (window as any)?.api;
+      if (api?.saveFile) {
+        return await api.saveFile(filename, content);
+      }
       if (api?.file?.saveFile) {
         return await api.file.saveFile(filename, content, mimeType);
       }
@@ -277,6 +280,9 @@ class ElectronPlatform implements IPlatform {
     },
     printHtml: async (html: string) => {
       const api = (window as any)?.api;
+      if (api?.printToPdf) {
+        return await api.printToPdf({ code: 'print', html });
+      }
       if (api?.pdf?.printHtml) {
         return await api.pdf.printHtml(html);
       }
@@ -285,6 +291,9 @@ class ElectronPlatform implements IPlatform {
     },
     exportPrHtml: async (code: string, html: string) => {
       const api = (window as any)?.api;
+      if (api?.printToPdf) {
+        return await api.printToPdf({ code, html });
+      }
       if (api?.pdf?.exportPrHtml) {
         return await api.pdf.exportPrHtml(code, html);
       }
@@ -297,6 +306,7 @@ class ElectronPlatform implements IPlatform {
 // ---------------------------------------------------------------------------
 // الكشف التلقائي وتصدير الكائن الموحّد
 // ---------------------------------------------------------------------------
-const isElectronEnv = typeof window !== 'undefined' && Boolean((window as any).api?.isElectron);
+const isElectronEnv = typeof window !== 'undefined' && Boolean((window as any).api?.isElectron || (window as any).api);
 
 export const platform: IPlatform = isElectronEnv ? new ElectronPlatform() : new BrowserPlatform();
+

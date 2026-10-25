@@ -27,13 +27,21 @@ export default defineConfig({
     }
   },
   renderer: {
-    root: resolve(__dirname, 'src/renderer'),
+    root: resolve(__dirname, '.'),
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src/renderer'),
         '@shared': resolve(__dirname, 'src/shared')
       }
+    },
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'index.html')
+        }
+      }
     }
   }
 });
+

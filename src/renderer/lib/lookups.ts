@@ -5,7 +5,7 @@
  * تلتزم بـ Q4: اقتراحات دون دمج تلقائي للأسماء المختلفة.
  */
 
-import { supabase, isConfigured } from './supabase';
+import { supabase, isConfigured, isOfflineDemoAllowed } from './supabase';
 
 export type LookupKind = 'entity' | 'requester' | 'department' | 'delivery_place' | 'unit';
 
@@ -68,6 +68,15 @@ export async function getLookups(kind?: LookupKind): Promise<Record<LookupKind, 
   };
 
   if (!isConfigured) {
+    if (!isOfflineDemoAllowed) {
+      return {
+        entity: [],
+        requester: [],
+        department: [],
+        delivery_place: [],
+        unit: []
+      };
+    }
     return result;
   }
 
@@ -96,7 +105,12 @@ export async function getLookups(kind?: LookupKind): Promise<Record<LookupKind, 
  * تحديث جدول lookups بقيم جديدة مدخلة دون تكرار ودون دمج تلقائي
  */
 export async function saveLookupEntries(entries: Array<{ kind: LookupKind; value: string }>): Promise<void> {
-  if (!isConfigured) return;
+  if (!isConfigured) {
+    if (!isOfflineDemoAllowed) {
+      console.warn('التطبيق غير مهيّأ للاتصال بقاعدة البيانات');
+    }
+    return;
+  }
   const cleanEntries = entries
     .map((e) => ({ kind: e.kind, value: (e.value || '').trim() }))
     .filter((e) => e.value.length > 0);

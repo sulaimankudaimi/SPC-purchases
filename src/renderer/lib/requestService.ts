@@ -42,6 +42,8 @@ export interface RequestInput {
 export interface SaveRequestOptions {
   online?: boolean;
   simulateConflictAttempts?: number;
+  isConfigured?: boolean;
+  isOfflineDemoAllowed?: boolean;
 }
 
 export interface SaveRequestResult {
@@ -176,8 +178,13 @@ export const requestService = {
     // وضع متصل: استدعاء next_request_code في قاعدة البيانات ثم الإدراج
     // -----------------------------------------------------------------------
     try {
-      if (!isConfigured) {
-        if (!isOfflineDemoAllowed) {
+      const configured = options?.isConfigured !== undefined ? options.isConfigured : isConfigured;
+      const demoAllowed = options?.isOfflineDemoAllowed !== undefined
+        ? options.isOfflineDemoAllowed
+        : (isOfflineDemoAllowed || options?.simulateConflictAttempts !== undefined);
+
+      if (!configured) {
+        if (!demoAllowed) {
           return {
             success: false,
             error: 'التطبيق غير مهيّأ، راجع المسؤول'

@@ -18,6 +18,8 @@ import { registerPhase8Tests } from '../../../tests/cases/phase8';
 import { registerPhase9Tests } from '../../../tests/cases/phase9';
 import { registerPhase10Tests } from '../../../tests/cases/phase10';
 import { registerFix1Tests } from '../../../tests/cases/fix1';
+import { registerFix2Tests } from '../../../tests/cases/fix2';
+import { registerFix3Tests } from '../../../tests/cases/fix3';
 import PrTemplatePreview from '../components/PrTemplatePreview';
 import { Play, Copy, Check, ArrowRight, ShieldCheck, AlertCircle, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -41,6 +43,8 @@ export default function SelfTest() {
     registerPhase9Tests();
     registerPhase10Tests();
     registerFix1Tests();
+    registerFix2Tests();
+    registerFix3Tests();
   }, []);
 
   const handleRunTests = async () => {
@@ -60,6 +64,8 @@ export default function SelfTest() {
       registerPhase9Tests();
       registerPhase10Tests();
       registerFix1Tests();
+      registerFix2Tests();
+      registerFix3Tests();
       const testResults = await runAllTests();
       setResults(testResults);
     } finally {

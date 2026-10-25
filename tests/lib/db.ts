@@ -13,22 +13,18 @@ const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.met
 
 export const SUPABASE_URL: string = 
   env.VITE_SUPABASE_URL || 
-  env.DEV_SUPABASE_URL || 
   '';
 
 export const SUPABASE_ANON_KEY: string = 
   env.VITE_SUPABASE_ANON_KEY || 
-  env.DEV_SUPABASE_ANON_KEY || 
   '';
 
 export const TEST_EMAIL: string = 
   env.VITE_TEST_EMAIL || 
-  env.SUPABASE_TEST_EMAIL || 
   '';
 
 export const TEST_PASSWORD: string = 
   env.VITE_TEST_PASSWORD || 
-  env.SUPABASE_TEST_PASSWORD || 
   '';
 
 export function isSupabaseConfigured(): boolean {

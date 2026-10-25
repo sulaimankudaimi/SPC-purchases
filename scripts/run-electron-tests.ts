@@ -33,7 +33,7 @@ function check(id: string, name: string, fn: () => void | Promise<void>) {
 }
 
 async function run() {
-  console.log('=== تشغيل اختبارات Electron المؤجلة لـ CI (E-1 إلى E-4) ===\n');
+  console.log('=== تشغيل اختبارات Electron الساكنة لـ CI (static-config E-1 إلى E-4) ===\n');
 
   // -------------------------------------------------------------------------
   // E-1: تشغيل النافذة وأعلام الأمان
