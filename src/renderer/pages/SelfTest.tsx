@@ -151,11 +151,15 @@ export default function SelfTest() {
 
           {results.length > 0 && (
             <div className="flex items-center gap-4 text-sm font-medium">
-              <span className="text-slate-600">المجموع: <strong className="text-slate-900">{total}</strong></span>
+              <span className="text-slate-600">
+                المجموع: <strong className="text-slate-900">{total}</strong>
+              </span>
               <span className="text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
                 ناجح: <strong>{passed}</strong>
               </span>
-              <span className={`px-2.5 py-1 rounded-md border ${failed > 0 ? 'text-rose-700 bg-rose-50 border-rose-200' : 'text-slate-500 bg-slate-100 border-slate-200'}`}>
+              <span
+                className={`px-2.5 py-1 rounded-md border ${failed > 0 ? 'text-rose-700 bg-rose-50 border-rose-200' : 'text-slate-500 bg-slate-100 border-slate-200'}`}
+              >
                 فاشل: <strong>{failed}</strong>
               </span>
             </div>
@@ -166,9 +170,7 @@ export default function SelfTest() {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
             <h2 className="font-semibold text-slate-800">قائمة حالات الاختبار</h2>
-            {results.length === 0 && (
-              <span className="text-xs text-slate-500">اضغط على «تشغيل الاختبارات» للبدء</span>
-            )}
+            {results.length === 0 && <span className="text-xs text-slate-500">اضغط على «تشغيل الاختبارات» للبدء</span>}
           </div>
 
           <div className="overflow-x-auto">
@@ -214,9 +216,7 @@ export default function SelfTest() {
                           <span className="text-slate-400">—</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-xs text-slate-400 font-mono text-left">
-                        {res.durationMs}ms
-                      </td>
+                      <td className="py-3 px-4 text-xs text-slate-400 font-mono text-left">{res.durationMs}ms</td>
                     </tr>
                   ))
                 )}

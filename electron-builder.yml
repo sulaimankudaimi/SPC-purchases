@@ -16,17 +16,17 @@ files:
   - out/**/*
   - assets/**/*
   - package.json
-  - "!tests/**"
-  - "!scripts/**"
-  - "!src/renderer/pages/SelfTest.*"
-  - "!src/renderer/tools/ImportTool.*"
-  - "!**/*.map"
+  - '!tests/**'
+  - '!scripts/**'
+  - '!src/renderer/pages/SelfTest.*'
+  - '!src/renderer/tools/ImportTool.*'
+  - '!**/*.map'
 
 extraResources:
   - from: assets
     to: assets
     filter:
-      - "**/*"
+      - '**/*'
 
 win:
   target:

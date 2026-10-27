@@ -9,51 +9,33 @@
 
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  Database, 
-  Upload, 
-  CheckCircle2, 
-  XCircle, 
-  AlertCircle, 
-  ArrowRight, 
+import {
+  Upload,
+  CheckCircle2,
+  XCircle,
+  ArrowRight,
   RotateCcw,
   FileJson,
-  Layers,
-  Scale
+  Layers
 } from 'lucide-react';
-import { supabase, isConfigured } from '../lib/supabase';
 import { formatMoney } from '../../shared/money';
-import { updateSetting, AppSettings } from '../lib/settings';
-import { saveLookupEntries, LookupKind } from '../lib/lookups';
-import { platform } from '../lib/platform';
-
-interface BackupPayload {
-  version: number;
-  exported_at: string;
-  database?: string;
-  requests: any[];
-  request_items: any[];
-  settings?: AppSettings;
-  lookups?: Record<LookupKind, string[]>;
-}
+import {
+  BackupPayload,
+  RestoreExecutionResult,
+  calculateBackupSummary,
+  parseBackupFile,
+  executeRestore
+} from './restoreService';
 
 export default function RestoreTool() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [backupData, setBackupData] = useState<BackupPayload | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
-  const [restoreResult, setRestoreResult] = useState<{
-    success: boolean;
-    message: string;
-    stats?: {
-      requestsCount: number;
-      itemsCount: number;
-      totalAmount: number;
-    };
-  } | null>(null);
+  const [restoreResult, setRestoreResult] = useState<RestoreExecutionResult | null>(null);
 
   // قراءة وتحليل ملف JSON
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -66,175 +48,29 @@ export default function RestoreTool() {
     setParseError(null);
     setRestoreResult(null);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const parsed = JSON.parse(text);
-
-        // التحقق من الحقول الأساسية
-        if (!parsed.requests || !Array.isArray(parsed.requests)) {
-          throw new Error('الملف لا يحتوي على جدول الطلبات requests بتنسيق صحيح.');
-        }
-
-        setBackupData(parsed);
-      } catch (err: any) {
-        setParseError('فشل تحليل ملف النسخة الاحتياطية: ' + (err?.message || 'تنسيق JSON غير صالح'));
-        setBackupData(null);
-      }
-    };
-    reader.onerror = () => {
-      setParseError('تعذر قراءة الملف المختار من القرص.');
-    };
-    reader.readAsText(file, 'utf-8');
+    try {
+      const data = await parseBackupFile(file);
+      setBackupData(data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'فشل تحليل ملف النسخة الاحتياطية';
+      setParseError(msg);
+      setBackupData(null);
+    }
   };
 
-  // إحصائيات سريعة للنسخة المرفوعة
-  const summary = React.useMemo(() => {
-    if (!backupData) return null;
-    const reqs = backupData.requests || [];
-    let itemsCount = 0;
-    let totalAmount = 0;
+  const summary = React.useMemo(() => calculateBackupSummary(backupData), [backupData]);
 
-    for (const r of reqs) {
-      const items = r.items || [];
-      itemsCount += items.length;
-      for (const itm of items) {
-        totalAmount += (itm.line_total || (itm.qty * itm.unit_price) || 0);
-      }
-    }
-
-    return {
-      requestsCount: reqs.length,
-      itemsCount: backupData.request_items?.length || itemsCount,
-      totalAmount
-    };
-  }, [backupData]);
-
-  // تنفيذ الاستعادة بجلسة المستخدم الموثق (upsert)
   const handleExecuteRestore = async () => {
     if (!backupData) return;
     setIsRestoring(true);
     setRestoreResult(null);
 
     try {
-      let restoredRequests = 0;
-      let restoredItems = 0;
-      let restoredAmount = 0;
-
-      // وضع Supabase متصل: إدراج عبر جلسة المستخدم (upsert)
-      if (isConfigured) {
-        // 1. استعادة الإعدادات إن وُجدت
-        if (backupData.settings) {
-          for (const key of Object.keys(backupData.settings) as Array<keyof AppSettings>) {
-            await updateSetting(key, backupData.settings[key]);
-          }
-        }
-
-        // 2. استعادة القوائم المرجعية إن وُجدت
-        if (backupData.lookups) {
-          const lookupEntries: Array<{ kind: LookupKind; value: string }> = [];
-          for (const [kind, vals] of Object.entries(backupData.lookups)) {
-            for (const v of vals) {
-              lookupEntries.push({ kind: kind as LookupKind, value: v });
-            }
-          }
-          await saveLookupEntries(lookupEntries);
-        }
-
-        // 3. استعادة الطلبات (upsert بالمعرف id)
-        const requestsToUpsert = backupData.requests.map((r) => ({
-          id: r.id,
-          code: r.code,
-          code_norm: r.code_norm,
-          request_date: r.request_date,
-          entity: r.entity,
-          requester: r.requester,
-          department: r.department || null,
-          delivery_place: r.delivery_place || null,
-          delivery_date: r.delivery_date || null,
-          currency: r.currency || 'ليرة سورية جديدة',
-          status: r.status || 'pending',
-          status_note: r.status_note || null,
-          notes: r.notes || null,
-          signatories: r.signatories || {},
-          pdf_local_path: r.pdf_local_path || null,
-          pdf_storage_path: r.pdf_storage_path || null,
-          invoice_storage_path: r.invoice_storage_path || null,
-          needs_review: Boolean(r.needs_review),
-          legacy_row: r.legacy_row || null,
-          deleted_at: r.deleted_at || null
-        }));
-
-        const { error: reqError } = await supabase
-          .from('requests')
-          .upsert(requestsToUpsert, { onConflict: 'id' });
-
-        if (reqError) {
-          throw new Error('فشل استعادة جدول الطلبات: ' + reqError.message);
-        }
-        restoredRequests = requestsToUpsert.length;
-
-        // 4. استعادة المواد (upsert بالمعرف request_id, line_no)
-        const itemsToUpsert = (backupData.request_items || backupData.requests.flatMap((r) => r.items || [])).map((itm: any) => ({
-          request_id: itm.request_id,
-          line_no: itm.line_no,
-          name: itm.name,
-          specs: itm.specs || null,
-          unit: itm.unit || null,
-          qty: itm.qty,
-          unit_price: itm.unit_price,
-          notes: itm.notes || null
-        }));
-
-        if (itemsToUpsert.length > 0) {
-          const { error: itemsError } = await supabase
-            .from('request_items')
-            .upsert(itemsToUpsert, { onConflict: 'request_id,line_no' });
-
-          if (itemsError) {
-            throw new Error('فشل استعادة جدول المواد: ' + itemsError.message);
-          }
-          restoredItems = itemsToUpsert.length;
-        }
-
-        restoredAmount = summary?.totalAmount || 0;
-      } else {
-        // وضع العرض التجريبي دون Supabase: التخزين المحلي في session store
-        const demoRequests = backupData.requests.map((r) => ({
-          ...r,
-          items: r.items || (backupData.request_items || []).filter((i: any) => i.request_id === r.id)
-        }));
-
-        await platform.session.set('spc_registry_requests', JSON.stringify(demoRequests));
-        await platform.session.set('spc_cache_registry', JSON.stringify({
-          cached_at: new Date().toISOString(),
-          requests: demoRequests
-        }));
-
-        if (backupData.settings) {
-          await platform.session.set('spc_local_settings', JSON.stringify(backupData.settings));
-        }
-
-        restoredRequests = demoRequests.length;
-        restoredItems = demoRequests.reduce((sum: number, r: any) => sum + (r.items?.length || 0), 0);
-        restoredAmount = summary?.totalAmount || 0;
-      }
-
-      setRestoreResult({
-        success: true,
-        message: 'تمت استعادة كافة البيانات بنجاح وبناء الجداول عبر جلسة المستخدم الموثَّق (Upsert).',
-        stats: {
-          requestsCount: restoredRequests,
-          itemsCount: restoredItems,
-          totalAmount: restoredAmount
-        }
-      });
-    } catch (err: any) {
-      setRestoreResult({
-        success: false,
-        message: err?.message || 'حدث خطأ غير متوقع أثناء عملية الاستعادة.'
-      });
+      const res = await executeRestore(backupData, summary);
+      setRestoreResult(res);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'حدث خطأ غير متوقع أثناء عملية الاستعادة.';
+      setRestoreResult({ success: false, message: msg });
     } finally {
       setIsRestoring(false);
     }
@@ -276,12 +112,7 @@ export default function RestoreTool() {
           <Upload className="w-8 h-8 text-slate-400 mx-auto" />
           <label className="block text-sm font-semibold text-teal-800 hover:underline cursor-pointer">
             <span>{fileName ? `الملف المختار: ${fileName}` : 'اختر ملف النسخة الاحتياطية (spc_backup_*.json)'}</span>
-            <input
-              type="file"
-              accept=".json,application/json"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
+            <input type="file" accept=".json,application/json" onChange={handleFileUpload} className="hidden" />
           </label>
           <p className="text-xs text-slate-400">
             الملفات المدعومة: صيغة JSON الناتجة عن زر «نسخة احتياطية الآن» من شاشة الإعدادات
@@ -312,16 +143,12 @@ export default function RestoreTool() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
               <span className="text-[11px] text-slate-500 font-medium">عدد الطلبات في الملف</span>
-              <div className="text-xl font-bold text-slate-900 mt-1 font-mono">
-                {summary.requestsCount} طلب
-              </div>
+              <div className="text-xl font-bold text-slate-900 mt-1 font-mono">{summary.requestsCount} طلب</div>
             </div>
 
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
               <span className="text-[11px] text-slate-500 font-medium">عدد المواد في الملف</span>
-              <div className="text-xl font-bold text-slate-900 mt-1 font-mono">
-                {summary.itemsCount} مادة
-              </div>
+              <div className="text-xl font-bold text-slate-900 mt-1 font-mono">{summary.itemsCount} مادة</div>
             </div>
 
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
@@ -334,7 +161,9 @@ export default function RestoreTool() {
 
           <div className="p-3 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl text-xs leading-relaxed">
             <span className="font-bold">آلية الاستعادة الآمنة: </span>
-            تتم عملية الاستعادة عبر دمج البيانات الحالية وتحديثها بأسلوب <code className="font-mono font-bold">upsert</code> بمعرفات الطلبات الأصلية دون حذف أو تكرار، مع استعادة لقطات التواقيع وحالات الطلبات كما هي.
+            تتم عملية الاستعادة عبر دمج البيانات الحالية وتحديثها بأسلوب{' '}
+            <code className="font-mono font-bold">upsert</code> بمعرفات الطلبات الأصلية دون حذف أو تكرار، مع استعادة
+            لقطات التواقيع وحالات الطلبات كما هي.
           </div>
 
           {/* زر تنفيذ الاستعادة */}
@@ -386,7 +215,9 @@ export default function RestoreTool() {
               </div>
               <div className="p-2.5 bg-white/80 rounded-lg border border-emerald-200">
                 <span className="text-slate-500 font-sans block text-[11px]">المبلغ الإجمالي:</span>
-                <span className="font-bold text-emerald-800 text-base">{formatMoney(restoreResult.stats.totalAmount, true)}</span>
+                <span className="font-bold text-emerald-800 text-base">
+                  {formatMoney(restoreResult.stats.totalAmount, true)}
+                </span>
               </div>
             </div>
           )}

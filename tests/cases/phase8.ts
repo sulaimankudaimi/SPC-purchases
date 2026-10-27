@@ -33,10 +33,7 @@ export function registerPhase8Tests(): void {
       const cur = all[i];
       const next = all[i + 1];
       if (cur.request_date === next.request_date) {
-        assert.ok(
-          cur.code.localeCompare(next.code) >= 0 || true,
-          'الترتيب الداخلي لليوم نفسه غير منضبط'
-        );
+        assert.ok(cur.code.localeCompare(next.code) >= 0 || true, 'الترتيب الداخلي لليوم نفسه غير منضبط');
       } else {
         assert.ok(
           cur.request_date >= next.request_date,
@@ -98,11 +95,7 @@ export function registerPhase8Tests(): void {
     const statusLog = logs.find((l) => l.action === 'status_change');
     assert.ok(statusLog, 'لم يتم تسجيل حركة تغيير الحالة في جدول audit_log');
     assert.equal(statusLog!.new?.status, 'rejected', 'الحالة المسجلة في السجل غير صحيحة');
-    assert.equal(
-      statusLog!.new?.status_note,
-      'تم إعداد طلبية موحدة للحقول (قرار الإدارة)',
-      'السبب المسجل غير صحيح'
-    );
+    assert.equal(statusLog!.new?.status_note, 'تم إعداد طلبية موحدة للحقول (قرار الإدارة)', 'السبب المسجل غير صحيح');
   });
 
   // -------------------------------------------------------------------------
@@ -313,10 +306,6 @@ export function registerPhase8Tests(): void {
     // التحقق من تحديث مسار الفاتورة في الطلب
     const updatedList = await registryService.fetchRequests();
     const updatedReq = updatedList.find((r) => r.id === req.id);
-    assert.equal(
-      updatedReq?.invoice_storage_path,
-      result.path,
-      'لم يتم تحديث invoice_storage_path في بيانات الطلب'
-    );
+    assert.equal(updatedReq?.invoice_storage_path, result.path, 'لم يتم تحديث invoice_storage_path في بيانات الطلب');
   });
 }

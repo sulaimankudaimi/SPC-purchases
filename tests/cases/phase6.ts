@@ -34,7 +34,12 @@ export function registerPhase6Tests(): void {
     assert.equal(pages15[1].length, 3, 'الصفحة الثانية يجب أن تحوي المواد الـ 3 المتبقية');
 
     // 4. فحص حشو الصفوف في مستند HTML: عدم وجود "0.0" في الصفوف الفارغة (القرار D13)
-    const req: PrRequest = { code: 'spc 19-8-26 (1)', request_date: '2026-08-19', entity: 'دائرة الإنتاج', requester: 'م. ناصر العوده' };
+    const req: PrRequest = {
+      code: 'spc 19-8-26 (1)',
+      request_date: '2026-08-19',
+      entity: 'دائرة الإنتاج',
+      requester: 'م. ناصر العوده'
+    };
     const html = buildPrDocument(req, items8, DEFAULT_SETTINGS);
     assert.ok(html.includes('empty-row'), 'يجب تضمين صفوف فارغة مكملة للـ 12');
     assert.equal(html.includes('>0.0<'), false, 'ممنوع ظهور 0.0 في الصفوف الفارغة (القرار D13)');
@@ -54,17 +59,31 @@ export function registerPhase6Tests(): void {
       currency: 'ليرة سورية جديدة'
     };
     const items: PrItem[] = [
-      { line_no: 1, name: 'صمام تفريغ', specs: 'ستانلس ستيل', unit: 'عدد', qty: 2, unit_price: 450, notes: 'ملاحظة خاصة' }
+      {
+        line_no: 1,
+        name: 'صمام تفريغ',
+        specs: 'ستانلس ستيل',
+        unit: 'عدد',
+        qty: 2,
+        unit_price: 450,
+        notes: 'ملاحظة خاصة'
+      }
     ];
 
     const html = buildPrDocument(req, items, DEFAULT_SETTINGS);
 
     // 1. تصحيح كلمة nots إلى Notes في رأس جدول المواد وفي جدول التواقيع (القرار D8)
-    assert.ok(html.includes('Notes<br/>ملاحظات') || html.includes('Notes / ملاحظات'), 'فشل تصحيح nots إلى Notes في الرأس');
+    assert.ok(
+      html.includes('Notes<br/>ملاحظات') || html.includes('Notes / ملاحظات'),
+      'فشل تصحيح nots إلى Notes في الرأس'
+    );
     assert.equal(html.toLowerCase().includes('nots'), false, 'الكلمة الخاطئة "nots" لا تزال موجودة في القالب');
 
     // 2. تثبيت عرض عمود Quantity لمنع قطعه في العرض الضيق (D8)
-    assert.ok(html.includes('.col-qty') && (html.includes('min-width') || html.includes('width: 8%')), 'فشل تثبيت عرض عمود Quantity');
+    assert.ok(
+      html.includes('.col-qty') && (html.includes('min-width') || html.includes('width: 8%')),
+      'فشل تثبيت عرض عمود Quantity'
+    );
 
     // 3. مطابقة العناوين الثنائية اللغة
     assert.ok(html.includes('Purchase Request') && html.includes('طلب شراء'), 'العنوان الرئيسي مفقود');
@@ -80,7 +99,12 @@ export function registerPhase6Tests(): void {
   // -------------------------------------------------------------------------
   t('T-6.3', 'تكرار الرؤوس وظهور الإجمالي وجدول التواقيع في الصفحة الأخيرة فقط (O2)', () => {
     // بناء طلب متعدد الصفحات (16 مادة)
-    const req: PrRequest = { code: 'spc 20-10-26 (2)', request_date: '2026-10-20', entity: 'دائرة الحفر', requester: 'م. سليمان كديمي' };
+    const req: PrRequest = {
+      code: 'spc 20-10-26 (2)',
+      request_date: '2026-10-20',
+      entity: 'دائرة الحفر',
+      requester: 'م. سليمان كديمي'
+    };
     const items16 = Array.from({ length: 16 }, (_, i) => ({
       line_no: i + 1,
       name: `مادة رقم ${i + 1}`,
@@ -115,7 +139,12 @@ export function registerPhase6Tests(): void {
   // T-6.4: بنية وتنسيقات الطباعة A4 والخطوط والحدود (SPEC §1.1)
   // -------------------------------------------------------------------------
   t('T-6.4', 'بنية وتنسيقات الطباعة A4 والخطوط والحدود والارتفاع 55pt (SPEC §1.1)', () => {
-    const req: PrRequest = { code: 'spc 1-9-26 (1)', request_date: '2026-09-01', entity: 'الإدارة', requester: 'م. ناصر العوده' };
+    const req: PrRequest = {
+      code: 'spc 1-9-26 (1)',
+      request_date: '2026-09-01',
+      entity: 'الإدارة',
+      requester: 'م. ناصر العوده'
+    };
     const html = buildPrDocument(req, [{ name: 'مادة 1', qty: 1, unit_price: 100 }], DEFAULT_SETTINGS);
 
     // فحص A4 و RTL
@@ -123,7 +152,10 @@ export function registerPhase6Tests(): void {
     assert.ok(html.includes('dir="rtl"'), 'اتجاه RTL مفقود من الجذر');
 
     // فحص الخط Sakkal Majalla / Amiri
-    assert.ok(html.includes('Sakkal Majalla') && html.includes('Amiri'), 'الخطوط المعتمدة Sakkal Majalla و Amiri مفقودة');
+    assert.ok(
+      html.includes('Sakkal Majalla') && html.includes('Amiri'),
+      'الخطوط المعتمدة Sakkal Majalla و Amiri مفقودة'
+    );
 
     // فحص الحدود والارتفاع 55 نقطة لصفوف المواد
     assert.ok(html.includes('height: 55pt'), 'ارتفاع صفوف المواد 55pt مفقود');
@@ -153,11 +185,7 @@ export function registerPhase6Tests(): void {
 
     // 2. فحص مسار التخزين السحابي
     const storagePath = buildStoragePath(requestId, code);
-    assert.equal(
-      storagePath,
-      'req-uuid-test-1234/spc 23-10-26 (1).pdf',
-      'مسار التخزين السحابي غير مطابق'
-    );
+    assert.equal(storagePath, 'req-uuid-test-1234/spc 23-10-26 (1).pdf', 'مسار التخزين السحابي غير مطابق');
 
     // 3. استدعاء archiveService
     const archiveRes = await archiveService.archivePdf({
@@ -177,10 +205,14 @@ export function registerPhase6Tests(): void {
     // التأكد من خلو المشروع من مكتبات pdfmake أو jsPDF أو react-pdf (القرار D2)
     const forbiddenLibs = ['jspdf', 'pdfmake', '@react-pdf/renderer', 'html2pdf'];
     for (const lib of forbiddenLibs) {
-      assert.throws(() => {
-        // فحص محاولة استيراد
-        require(lib);
-      }, undefined, `يجب حظر المكتبة المباشرة: ${lib}`);
+      assert.throws(
+        () => {
+          // فحص محاولة استيراد
+          require(lib);
+        },
+        undefined,
+        `يجب حظر المكتبة المباشرة: ${lib}`
+      );
     }
   });
 }

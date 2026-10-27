@@ -7,12 +7,12 @@
 import { supabase, isConfigured, isOfflineDemoAllowed } from './supabase';
 
 export interface SignatoriesSettings {
-  requester: string;       // 1. الطالب
-  warehouse: string;       // 2. المستودع
-  dept_manager: string;    // 3. مدير الدائرة أو مشرف الحقل (م. ناصر العوده)
-  supply_manager: string;  // 4. مدير دائرة الإمداد والتوريد (م. ناصر العوده)
+  requester: string; // 1. الطالب
+  warehouse: string; // 2. المستودع
+  dept_manager: string; // 3. مدير الدائرة أو مشرف الحقل (م. ناصر العوده)
+  supply_manager: string; // 4. مدير دائرة الإمداد والتوريد (م. ناصر العوده)
   fields_director: string; // 5. مدير حقول دير الزور
-  procurement: string;     // 6. المشتريات (م.م. سامي الفرج)
+  procurement: string; // 6. المشتريات (م.م. سامي الفرج)
 }
 
 export interface ArchiveDirSettings {
@@ -81,9 +81,7 @@ export async function getSettings(): Promise<AppSettings> {
   }
 
   try {
-    const { data, error } = await supabase
-      .from('settings')
-      .select('key, value');
+    const { data, error } = await supabase.from('settings').select('key, value');
 
     if (error || !data || data.length === 0) {
       return { ...DEFAULT_SETTINGS };
@@ -140,12 +138,10 @@ export async function updateSetting<K extends keyof AppSettings>(
   }
 
   try {
-    const { error } = await supabase
-      .from('settings')
-      .upsert({
-        key,
-        value: value as any
-      });
+    const { error } = await supabase.from('settings').upsert({
+      key,
+      value: value as any
+    });
 
     if (error) {
       return { success: false, error: `فشل حفظ الإعداد (${key}): ${error.message}` };

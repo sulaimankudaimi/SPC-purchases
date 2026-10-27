@@ -24,7 +24,11 @@ export interface IElectronAPI {
     sizeBytes?: number;
     error?: string;
   }>;
-  saveFile: (filename: string, content: any, mimeType?: string) => Promise<{
+  saveFile: (
+    filename: string,
+    content: any,
+    mimeType?: string
+  ) => Promise<{
     success: boolean;
     path?: string;
     error?: string;

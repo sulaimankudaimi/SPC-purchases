@@ -64,7 +64,9 @@ export function registerPhase10Tests(): void {
   // -------------------------------------------------------------------------
   t('T-10.5', 'جاهزية إعدادات Electron الساكنة static-config لـ CI (E-1 إلى E-4)', () => {
     // اختبار E-3: تقسيم الصفحات 1 و 12 و 13 وتصحيح Notes
-    const p1 = paginate([{ line_no: 1, name: 'أنبوب', specs: '', unit: 'عدد', qty: 1, unit_price: 100, line_total: 100, notes: '' }]);
+    const p1 = paginate([
+      { line_no: 1, name: 'أنبوب', specs: '', unit: 'عدد', qty: 1, unit_price: 100, line_total: 100, notes: '' }
+    ]);
     assert.equal(p1.length, 1, '1 مادة تنتج صفحة واحدة');
 
     const items12 = Array.from({ length: 12 }, (_, i) => ({
@@ -92,7 +94,13 @@ export function registerPhase10Tests(): void {
     assert.equal(paginate(items13).length, 2, '13 مادة تنتج صفحتين');
 
     const sampleDoc = buildPrDocument(
-      { code: 'spc 1-1-26 (1)', request_date: '2026-01-01', entity: 'الإنتاج', requester: 'سليمان', currency: 'ليرة سورية جديدة' },
+      {
+        code: 'spc 1-1-26 (1)',
+        request_date: '2026-01-01',
+        entity: 'الإنتاج',
+        requester: 'سليمان',
+        currency: 'ليرة سورية جديدة'
+      },
       p1[0],
       { signatories: { supply_manager: 'أحمد', dept_manager: 'خالد', procurement: 'عمر' } }
     );
@@ -104,10 +112,32 @@ export function registerPhase10Tests(): void {
   // -------------------------------------------------------------------------
   t('T-10.6', 'شمولية مصفوفة تتبع القرارات D1–D12 و X1–X5 و O1–O5 وبنود (أ)–(د)', () => {
     const requiredDecisions = [
-      'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10', 'D11', 'D12',
-      'X1', 'X2', 'X3', 'X4', 'X5',
-      'O1', 'O2', 'O3', 'O4', 'O5',
-      'item_a', 'item_b', 'item_c', 'item_d'
+      'D1',
+      'D2',
+      'D3',
+      'D4',
+      'D5',
+      'D6',
+      'D7',
+      'D8',
+      'D9',
+      'D10',
+      'D11',
+      'D12',
+      'X1',
+      'X2',
+      'X3',
+      'X4',
+      'X5',
+      'O1',
+      'O2',
+      'O3',
+      'O4',
+      'O5',
+      'item_a',
+      'item_b',
+      'item_c',
+      'item_d'
     ];
     assert.equal(requiredDecisions.length, 26, 'إجمالي بنود التتبع يجب أن يكون 26 بنداً معتمداً');
   });

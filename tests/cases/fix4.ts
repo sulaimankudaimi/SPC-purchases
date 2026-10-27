@@ -223,22 +223,25 @@ export function registerFix4Tests(): void {
       for (const req of res.requests) {
         const { data: reqData, error: reqErr } = await supabase
           .from('requests')
-          .upsert({
-            code: req.code,
-            request_date: req.request_date,
-            entity: req.entity,
-            requester: req.requester,
-            department: req.department,
-            delivery_place: req.delivery_place,
-            delivery_date: req.delivery_date,
-            currency: req.currency,
-            status: req.status,
-            status_note: req.status_note,
-            notes: req.notes,
-            pdf_local_path: req.pdf_local_path,
-            needs_review: req.needs_review,
-            legacy_row: req.legacy_row
-          }, { onConflict: 'code_norm' })
+          .upsert(
+            {
+              code: req.code,
+              request_date: req.request_date,
+              entity: req.entity,
+              requester: req.requester,
+              department: req.department,
+              delivery_place: req.delivery_place,
+              delivery_date: req.delivery_date,
+              currency: req.currency,
+              status: req.status,
+              status_note: req.status_note,
+              notes: req.notes,
+              pdf_local_path: req.pdf_local_path,
+              needs_review: req.needs_review,
+              legacy_row: req.legacy_row
+            },
+            { onConflict: 'code_norm' }
+          )
           .select('id')
           .single();
 
@@ -301,9 +304,8 @@ export function registerFix4Tests(): void {
     if (isConfigured) {
       // إعادة تشغيل الاستيراد مع upsert على code_norm
       for (const req of res.requests) {
-        await supabase
-          .from('requests')
-          .upsert({
+        await supabase.from('requests').upsert(
+          {
             code: req.code,
             request_date: req.request_date,
             entity: req.entity,
@@ -318,7 +320,9 @@ export function registerFix4Tests(): void {
             pdf_local_path: req.pdf_local_path,
             needs_review: req.needs_review,
             legacy_row: req.legacy_row
-          }, { onConflict: 'code_norm' });
+          },
+          { onConflict: 'code_norm' }
+        );
       }
 
       const { count: reqCount } = await supabase.from('requests').select('*', { count: 'exact', head: true });
@@ -394,9 +398,9 @@ export function registerFix4Tests(): void {
         const line = lines[lineNo];
         if (line.includes('SUPABASE_SERVICE_ROLE_KEY') || line.includes('service_role')) {
           // التحقق من أنها ليست مجرد تعليق أو فحص حظر
-          const isCheckOrComment = 
-            line.includes('//') || 
-            line.includes('*') || 
+          const isCheckOrComment =
+            line.includes('//') ||
+            line.includes('*') ||
             line.includes('بلا service_role') ||
             line.includes('حظر') ||
             line.includes('خلو') ||

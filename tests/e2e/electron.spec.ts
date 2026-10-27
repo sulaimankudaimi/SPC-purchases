@@ -132,11 +132,14 @@ test.describe('اختبارات تكامل Playwright في بيئة Electron (E1
     const testValue = JSON.stringify({ token: 'e2e-jwt-token-12345', timestamp: Date.now() });
 
     // 1. الحفظ
-    const saved = await firstWindow.evaluate(async ({ k, v }: { k: string; v: string }) => {
-      const api = (window as any).api;
-      if (!api?.session) return false;
-      return await api.session.set(k, v);
-    }, { k: testKey, v: testValue });
+    const saved = await firstWindow.evaluate(
+      async ({ k, v }: { k: string; v: string }) => {
+        const api = (window as any).api;
+        if (!api?.session) return false;
+        return await api.session.set(k, v);
+      },
+      { k: testKey, v: testValue }
+    );
     expect(saved).toBe(true);
 
     // 2. القراءة

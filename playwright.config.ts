@@ -7,8 +7,5 @@ export default defineConfig({
     timeout: 5000
   },
   fullyParallel: false,
-  reporter: [
-    ['list'],
-    ['html', { open: 'never' }]
-  ]
+  reporter: [['list'], ['html', { open: 'never' }]]
 });

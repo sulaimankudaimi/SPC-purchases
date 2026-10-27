@@ -5,13 +5,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { 
-  Printer, 
-  Download, 
-  Eye, 
-  FileCheck, 
-  Layers 
-} from 'lucide-react';
+import { Printer, Download, Eye, FileCheck, Layers } from 'lucide-react';
 import { buildPrDocument, PrRequest, PrItem } from '../../shared/pdfLayout';
 import { DEFAULT_SETTINGS } from '../lib/settings';
 import { platform } from '../lib/platform';
@@ -35,9 +29,33 @@ export default function PrTemplatePreview() {
   const sampleItems: PrItem[] = useMemo(() => {
     if (mode === 'single') {
       return [
-        { line_no: 1, name: 'صمام أمان كروي 2 إنش', specs: 'ستانلس ستيل 316 ضغط 600', unit: 'عدد', qty: 4, unit_price: 700, notes: 'عاجل للموقع' },
-        { line_no: 2, name: 'طقم جوانات تفلون حرارية', specs: 'مقاوم للمواد الكيميائية', unit: 'طقم', qty: 2, unit_price: 350, notes: '' },
-        { line_no: 3, name: 'براغي تثبيت صلب عالي المتانة', specs: 'قياس M16 طول 80 مم', unit: 'عدد', qty: 20, unit_price: 15, notes: '' }
+        {
+          line_no: 1,
+          name: 'صمام أمان كروي 2 إنش',
+          specs: 'ستانلس ستيل 316 ضغط 600',
+          unit: 'عدد',
+          qty: 4,
+          unit_price: 700,
+          notes: 'عاجل للموقع'
+        },
+        {
+          line_no: 2,
+          name: 'طقم جوانات تفلون حرارية',
+          specs: 'مقاوم للمواد الكيميائية',
+          unit: 'طقم',
+          qty: 2,
+          unit_price: 350,
+          notes: ''
+        },
+        {
+          line_no: 3,
+          name: 'براغي تثبيت صلب عالي المتانة',
+          specs: 'قياس M16 طول 80 مم',
+          unit: 'عدد',
+          qty: 20,
+          unit_price: 15,
+          notes: ''
+        }
       ];
     } else {
       // 15 مادة لاختبار تعدد الصفحات (O2)
@@ -125,7 +143,8 @@ export default function PrTemplatePreview() {
       <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
         <FileCheck className="w-4 h-4 text-emerald-600 shrink-0" />
         <span>
-          قالب مطابق للاستمارة: حدود رفيعة، صف 55pt، تصحيح nots إلى Notes، والشعاران والترويسة، وخط Sakkal Majalla/Amiri.
+          قالب مطابق للاستمارة: حدود رفيعة، صف 55pt، تصحيح nots إلى Notes، والشعاران والترويسة، وخط Sakkal
+          Majalla/Amiri.
         </span>
       </div>
 

@@ -9,7 +9,11 @@
  */
 
 import { Session, User, AuthError } from '@supabase/supabase-js';
-import { supabase, isConfigured as defaultIsConfigured, isOfflineDemoAllowed as defaultIsOfflineDemoAllowed } from './supabase';
+import {
+  supabase,
+  isConfigured as defaultIsConfigured,
+  isOfflineDemoAllowed as defaultIsOfflineDemoAllowed
+} from './supabase';
 import { platform } from './platform';
 
 const authListeners = new Set<(session: Session | null) => void>();
@@ -55,7 +59,7 @@ export function requireSession(session: unknown): boolean {
 export function translateAuthError(error: AuthError | Error | string | null | undefined): string {
   if (!error) return 'حدث خطأ غير معروف أثناء المصادقة.';
 
-  const message = typeof error === 'string' ? error : (error.message || '');
+  const message = typeof error === 'string' ? error : error.message || '';
   const lowerMsg = message.toLowerCase();
 
   if (
@@ -133,7 +137,8 @@ export async function signIn(
   }
 
   const configured = options?.isConfigured !== undefined ? options.isConfigured : defaultIsConfigured;
-  const demoAllowed = options?.isOfflineDemoAllowed !== undefined ? options.isOfflineDemoAllowed : defaultIsOfflineDemoAllowed;
+  const demoAllowed =
+    options?.isOfflineDemoAllowed !== undefined ? options.isOfflineDemoAllowed : defaultIsOfflineDemoAllowed;
 
   // عند عدم تهيئة Supabase
   if (!configured) {

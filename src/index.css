@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* تعريف خطوط الاستمارة والواجهة (قرار D7) */
 @font-face {
@@ -17,23 +17,8 @@
   font-display: swap;
 }
 
-@font-face {
-  font-family: 'Amiri';
-  src: url('/assets/fonts/Amiri-Regular.ttf') format('truetype'),
-       local('Amiri');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Amiri';
-  src: url('/assets/fonts/Amiri-Bold.ttf') format('truetype'),
-       local('Amiri-Bold'), local('Amiri Bold');
-  font-weight: bold;
-  font-style: normal;
-  font-display: swap;
-}
+@import '@fontsource/amiri/400.css';
+@import '@fontsource/amiri/700.css';
 
 :root {
   font-family: 'Sakkal Majalla', 'Amiri', 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;

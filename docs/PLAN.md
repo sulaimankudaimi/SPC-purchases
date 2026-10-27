@@ -34,9 +34,9 @@
 
 project/  
 CLAUDE.md docs/{SPEC,DECISIONS,DATA_MODEL,PROGRESS}.md  
-assets/{spc-logo.png, header-sy.png, fonts/Amiri-*.ttf}  
-supabase/migrations/*.sql supabase/tests/*.sql  
-scripts/import-legacy.ts scripts/fixtures/*.json  
+assets/{spc-logo.png, header-sy.png, fonts/Amiri-_.ttf}  
+supabase/migrations/_.sql supabase/tests/_.sql  
+scripts/import-legacy.ts scripts/fixtures/_.json  
 src/main/ src/preload/  
 src/renderer/{pages,components,lib,store}/  
 src/shared/{schema.ts,money.ts,code.ts,dates.ts}  
@@ -60,7 +60,7 @@ tests/{unit,e2e,visual}/
 
 3.  حفظ SUPABASE_URL وSUPABASE_ANON_KEY لكل بيئة في .env.local (مُدرج في .gitignore)، وحفظ service_role في ملف منفصل .env.import لا يُرفع ولا يُجمَّع مع التطبيق.
 
-4.  اختبار الوصول مبكراً: التحقق من أن الجهاز المستهدف يصل إلى *.supabase.co وإلى سجل npm وGitHub (يحتاجه التغليف لتنزيل ملفات Electron وNSIS). عند وجود حجب تُسجَّل البدائل (مرآة ELECTRON_MIRROR، أو شبكة أخرى للبناء، أو بناء على GitHub Actions) في DECISIONS.md، وتبقى مرحلة العمل دون إنترنت (المرحلة 9) إلزامية لا اختيارية.
+4.  اختبار الوصول مبكراً: التحقق من أن الجهاز المستهدف يصل إلى \*.supabase.co وإلى سجل npm وGitHub (يحتاجه التغليف لتنزيل ملفات Electron وNSIS). عند وجود حجب تُسجَّل البدائل (مرآة ELECTRON_MIRROR، أو شبكة أخرى للبناء، أو بناء على GitHub Actions) في DECISIONS.md، وتبقى مرحلة العمل دون إنترنت (المرحلة 9) إلزامية لا اختيارية.
 
 5.  نسخ الملفين الأصليين إلى docs/reference/، واستخراج الصورتين من داخل الاستمارة (xl/media/image1.png، image2.png) إلى assets/ بأسماء spc-logo.png وheader-sy.png.
 
@@ -118,7 +118,7 @@ tests/{unit,e2e,visual}/
 
 - T1.4 (أمان): داخل الصفحة typeof require === 'undefined'، وwindow.api.ping() يعيد pong، ومحاولة window.open لا تفتح شيئاً.
 
-- T1.5: npm run dist ينتج ملف *.exe؛ تنصيبه على الجهاز ينشئ اختصاراً على سطح المكتب، ويعمل التطبيق، وإزالة التنصيب تنظّف الملفات.
+- T1.5: npm run dist ينتج ملف \*.exe؛ تنصيبه على الجهاز ينشئ اختصاراً على سطح المكتب، ويعمل التطبيق، وإزالة التنصيب تنظّف الملفات.
 
 - T1.6: تشغيل نسخة ثانية يُظهر النسخة الأولى ولا يفتح نافذة جديدة.
 
@@ -202,7 +202,7 @@ tests/{unit,e2e,visual}/
 
 الهدف: نقل 51 طلباً و158 مادة إلى Supabase بدقة مثبتة بالأرقام، دون إصلاح صامت.
 
-المدخلات: SPEC.md (القسم 1.2–1.3)، الملف docs/reference/سجل_الشراء_المحلي.xlsx.
+المدخلات: SPEC.md (القسم 1.2–1.3)، الملف docs/reference/سجل*الشراء*المحلي.xlsx.
 
 المهام:
 
@@ -210,7 +210,7 @@ tests/{unit,e2e,visual}/
 
 2.  التجميع: صف يبدأ طلباً عندما يكون العمودان A أو B غير فارغين، وتتبعه صفوف المواد (H–O) حتى الطلب التالي. المعادلات تُحسب (العدد×السعر) ولا تُنقل.
 
-3.  التطبيع حسب الجدول 1.3: تحويل التاريخ، _→NULL، تنظيف المسافات، ربط الحالات، إبقاء الرمز كما هو مع code_norm.
+3.  التطبيع حسب الجدول 1.3: تحويل التاريخ، \_→NULL، تنظيف المسافات، ربط الحالات، إبقاء الرمز كما هو مع code_norm.
 
 4.  تقرير import-report.json/.csv: السطران غير المتطابقين (needs_review)، اختلافات الأسماء المقترحة للدمج، الوحدات الشاذة، والنص الأصلي لحالة الرفض.
 
@@ -232,7 +232,7 @@ tests/{unit,e2e,visual}/
 
 - T4.6: تشغيل --commit مرة ثانية لا يغيّر الأعداد.
 
-- T4.7: لا قيمة _ في أي حقل، ولا مفتاح service_role في src/ أو dist/ (grep يعيد فراغاً).
+- T4.7: لا قيمة \_ في أي حقل، ولا مفتاح service_role في src/ أو dist/ (grep يعيد فراغاً).
 
 - T4.8: مراجعة يدوية لـ5 طلبات عشوائية (يطبع السكربت مقارنة جنباً إلى جنب مع Excel) ويوقّع المستخدم عليها.
 

@@ -90,4 +90,3 @@ export function extractDateFromCode(code: string): string | null {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${p.fullYear}-${pad(p.month)}-${pad(p.day)}`;
 }
-

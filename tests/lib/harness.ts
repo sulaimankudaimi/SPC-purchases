@@ -50,13 +50,17 @@ export const assert = {
 
   equal(actual: any, expected: any, message?: string): void {
     if (actual !== expected) {
-      throw new AssertionError(message || `فشل التطابق: المتوقع [${String(expected)}] بينما الفعلي [${String(actual)}]`);
+      throw new AssertionError(
+        message || `فشل التطابق: المتوقع [${String(expected)}] بينما الفعلي [${String(actual)}]`
+      );
     }
   },
 
   deepEqual(actual: any, expected: any, message?: string): void {
     if (!deepEqualCheck(actual, expected)) {
-      throw new AssertionError(message || `فشل التطابق العميق: المتوقع ${JSON.stringify(expected)} بينما الفعلي ${JSON.stringify(actual)}`);
+      throw new AssertionError(
+        message || `فشل التطابق العميق: المتوقع ${JSON.stringify(expected)} بينما الفعلي ${JSON.stringify(actual)}`
+      );
     }
   },
 

@@ -373,7 +373,9 @@ function finalizeRequest(
   const distinctStatuses = Array.from(new Set(rawStatuses.map(mapItemStatus)));
 
   if (distinctStatuses.length > 1) {
-    conflicts.push(`طلب ${req.code} (السطر ${req.legacy_row}) يحوي حالات متباينة بين مواده: ${distinctStatuses.join(', ')}`);
+    conflicts.push(
+      `طلب ${req.code} (السطر ${req.legacy_row}) يحوي حالات متباينة بين مواده: ${distinctStatuses.join(', ')}`
+    );
   }
 
   // فحص حالة الرفض الخاصة (Q7)

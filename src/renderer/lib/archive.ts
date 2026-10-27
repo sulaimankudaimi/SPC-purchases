@@ -78,12 +78,10 @@ export const archiveService = {
       }
 
       // 2. الرفع إلى حاوية request-pdfs في Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('request-pdfs')
-        .upload(storagePath, blobToUpload, {
-          contentType: 'application/pdf',
-          upsert: true
-        });
+      const { error: uploadError } = await supabase.storage.from('request-pdfs').upload(storagePath, blobToUpload, {
+        contentType: 'application/pdf',
+        upsert: true
+      });
 
       if (uploadError) {
         throw new Error(`فشل رفع ملف الاستمارة إلى Storage: ${uploadError.message}`);

@@ -42,21 +42,21 @@ export default function Login() {
   // إذا لم يكن Supabase مهيأً ولم يُسمح بالوضع التجريبي المحلي: شاشة خطأ إعداد واضحة
   if (!isConfigured && !isOfflineDemoAllowed) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-6 text-slate-100 font-sans select-none" dir="rtl">
+      <div
+        className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-6 text-slate-100 font-sans select-none"
+        dir="rtl"
+      >
         <div className="w-full max-w-md bg-slate-800/95 border border-rose-500/40 rounded-2xl p-8 shadow-2xl backdrop-blur-sm space-y-6 text-center">
           <div className="w-16 h-16 rounded-2xl bg-rose-950/60 border border-rose-800/80 text-rose-400 flex items-center justify-center mx-auto shadow-lg">
             <AlertTriangle className="w-8 h-8 text-rose-400" />
           </div>
 
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">
-              خطأ في إعداد المنظومة
-            </h1>
-            <p className="text-rose-300 font-bold mt-3 text-base">
-              التطبيق غير مهيّأ، راجع المسؤول
-            </p>
+            <h1 className="text-xl font-bold text-white tracking-tight">خطأ في إعداد المنظومة</h1>
+            <p className="text-rose-300 font-bold mt-3 text-base">التطبيق غير مهيّأ، راجع المسؤول</p>
             <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-              لم يتم العثور على مفاتيح الاتصال بخادم Supabase (VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY). يرجى مراجعة مسؤول النظام لضبط متغيرات البيئة قبل تشغيل التطبيق.
+              لم يتم العثور على مفاتيح الاتصال بخادم Supabase (VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY). يرجى مراجعة
+              مسؤول النظام لضبط متغيرات البيئة قبل تشغيل التطبيق.
             </p>
           </div>
 
@@ -92,7 +92,10 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-6 text-slate-100 font-sans select-none" dir="rtl">
+    <div
+      className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-6 text-slate-100 font-sans select-none"
+      dir="rtl"
+    >
       {/* بطاقة الدخول */}
       <div className="w-full max-w-md bg-slate-800/90 border border-slate-700/80 rounded-2xl p-8 shadow-2xl backdrop-blur-sm space-y-6">
         {/* الترويسة والشعار */}
@@ -102,12 +105,8 @@ export default function Login() {
           </div>
 
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">
-              منظومة إدارة المشتريات المحلية
-            </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              دائرة الإمداد والتوريد — مديرية حقول دير الزور
-            </p>
+            <h1 className="text-xl font-bold text-white tracking-tight">منظومة إدارة المشتريات المحلية</h1>
+            <p className="text-xs text-slate-400 mt-1">دائرة الإمداد والتوريد — مديرية حقول دير الزور</p>
           </div>
         </div>
 
@@ -122,9 +121,7 @@ export default function Login() {
         {/* نموذج تسجيل الدخول */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              البريد الإلكتروني
-            </label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">البريد الإلكتروني</label>
             <div className="relative">
               <input
                 type="email"
@@ -140,9 +137,7 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              كلمة المرور
-            </label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">كلمة المرور</label>
             <div className="relative">
               <input
                 type="password"

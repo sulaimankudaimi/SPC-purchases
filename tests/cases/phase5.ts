@@ -50,9 +50,7 @@ export function registerPhase5Tests(): void {
       entity: 'دائرة الإنتاج',
       requester: 'م. ناصر العوده',
       request_date: '2026-10-23',
-      items: [
-        { line_no: 1, name: 'صمام أمان', qty: 2, unit_price: 500 }
-      ]
+      items: [{ line_no: 1, name: 'صمام أمان', qty: 2, unit_price: 500 }]
     };
 
     // لا يوجد أي حقل code في المدخلات يفرضه المستخدم

@@ -17,15 +17,15 @@ function crc32(buf) {
   for (let i = 0; i < 256; i++) {
     let c = i;
     for (let k = 0; k < 8; k++) {
-      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
     }
     table[i] = c;
   }
-  let crc = 0xFFFFFFFF;
+  let crc = 0xffffffff;
   for (let i = 0; i < buf.length; i++) {
-    crc = table[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
+    crc = table[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
   }
-  return (crc ^ 0xFFFFFFFF) >>> 0;
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function makeChunk(type, data) {
@@ -38,8 +38,8 @@ function makeChunk(type, data) {
 }
 
 function createPng(width, height, r, g, b, isIcon = false) {
-  const sig = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-  
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
   // IHDR: 8-bit RGBA (color type 6) or RGB (color type 2)
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
@@ -59,26 +59,26 @@ function createPng(width, height, r, g, b, isIcon = false) {
     rawData[rowOffset] = 0; // filter none
     for (let x = 0; x < width; x++) {
       const pxOffset = rowOffset + 1 + x * 4;
-      
+
       if (isIcon) {
         // رسم نمط دائري جذاب للأيقونة باللون النفطي والذهبي الخاص بـ SPC
         const centerX = width / 2;
         const centerY = height / 2;
         const dist = Math.hypot(x - centerX, y - centerY);
         const radius = width * 0.45;
-        
+
         if (dist <= radius) {
           // خلفية دائرية نفطية #0F4C5C
           if (dist > radius - 6) {
             // إطار ذهبي خارجي
-            rawData[pxOffset] = 217;     // R
+            rawData[pxOffset] = 217; // R
             rawData[pxOffset + 1] = 119; // G
-            rawData[pxOffset + 2] = 6;   // B
+            rawData[pxOffset + 2] = 6; // B
             rawData[pxOffset + 3] = 255; // A
           } else {
-            rawData[pxOffset] = 15;      // R: #0F4C5C
-            rawData[pxOffset + 1] = 76;  // G
-            rawData[pxOffset + 2] = 92;  // B
+            rawData[pxOffset] = 15; // R: #0F4C5C
+            rawData[pxOffset + 1] = 76; // G
+            rawData[pxOffset + 2] = 92; // B
             rawData[pxOffset + 3] = 255; // A
           }
         } else {
@@ -114,10 +114,10 @@ function createIcoFromPng(pngBuffer) {
   header.writeUInt16LE(1, 4); // Count = 1 image
 
   const dirEntry = Buffer.alloc(16);
-  dirEntry.writeUInt8(0, 0);   // Width: 0 = 256px
-  dirEntry.writeUInt8(0, 1);   // Height: 0 = 256px
-  dirEntry.writeUInt8(0, 2);   // Color count: 0 (>=8bpp)
-  dirEntry.writeUInt8(0, 3);   // Reserved
+  dirEntry.writeUInt8(0, 0); // Width: 0 = 256px
+  dirEntry.writeUInt8(0, 1); // Height: 0 = 256px
+  dirEntry.writeUInt8(0, 2); // Color count: 0 (>=8bpp)
+  dirEntry.writeUInt8(0, 3); // Reserved
   dirEntry.writeUInt16LE(1, 4); // Color planes
   dirEntry.writeUInt16LE(32, 6); // Bits per pixel
   dirEntry.writeUInt32LE(pngBuffer.length, 8); // Image size in bytes

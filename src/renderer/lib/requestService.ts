@@ -1,167 +1,49 @@
 /**
  * src/renderer/lib/requestService.ts
- * خدمة حفظ ومزامنة طلبات الشراء والمواد
- * - متصلاً: استدعاء next_request_code في القاعدة ثم إدراج الطلب ومواده، مع لقطة التواقيع (D11)
- * - غير متصل: الحفظ في صندوق الصادر عبر platform.outbox بحالة «بانتظار الرمز» بمعرف uuid
- * - مزامنة syncOutbox: ترفع الطلبات بلا تكرار بالمعرّف
- * - حالة الاتصال تُحقن كوسيط options.online لمحاكاة الانقطاع
- * - ممنوع منعاً باتاً توليد الرمز في الواجهة (القرار D3)
+ * خدمة إدخال ومعالجة طلبات الشراء الجديدة (المرحلة 3 و 9)
+ * - حظر تام لتوليد الرمز في الواجهة (D3)
+ * - الحفظ في وضع الاتصال عبر RPC next_request_code مع إعادة المحاولة
+ * - الحفظ في وضع عدم الاتصال عبر الصندوق الصادر Outbox برمز مؤقت
+ * - لقطة التواقيع وفق القرار D11
  */
 
 import { supabase, isConfigured, isOfflineDemoAllowed } from './supabase';
 import { platform } from './platform';
-import { getSettings, SignatoriesSettings } from './settings';
 import { saveLookupEntries, LookupKind } from './lookups';
-import { RequestSchema, RequestItemSchema } from '../../shared/schema';
+import {
+  RequestItemInput,
+  RequestInput,
+  SaveRequestOptions,
+  SaveRequestResult,
+  OutboxRequestItem,
+  SyncOutboxResult
+} from './requestTypes';
+import { syncOutbox, triggerAutoSync, startAutoSync } from './requestSync';
+import {
+  generateUUID,
+  generateTemporaryCode,
+  buildSignatoriesSnapshot,
+  validateRequestInput
+} from './requestValidation';
 
-export interface RequestItemInput {
-  line_no: number;
-  name: string;
-  specs?: string;
-  unit?: string;
-  qty: number;
-  unit_price: number;
-  line_total?: number;
-  notes?: string;
-}
-
-export interface RequestInput {
-  id?: string;
-  entity: string;
-  requester: string;
-  department?: string;
-  delivery_place?: string;
-  delivery_date?: string | null;
-  request_date: string;
-  currency?: string;
-  items: RequestItemInput[];
-  notes?: string;
-  status_note?: string;
-}
-
-export interface SaveRequestOptions {
-  online?: boolean;
-  simulateConflictAttempts?: number;
-  isConfigured?: boolean;
-  isOfflineDemoAllowed?: boolean;
-}
-
-export interface SaveRequestResult {
-  success: boolean;
-  code?: string;
-  requestId?: string;
-  offline?: boolean;
-  outboxId?: string;
-  error?: string;
-}
-
-export interface OutboxRequestItem {
-  id: string;
-  temp_code: string;
-  data: RequestInput;
-  signatories: SignatoriesSettings;
-  status: 'pending_code';
-  enqueued_at: string;
-}
-
-export interface SyncOutboxResult {
-  syncedCount: number;
-  failedCount: number;
-  remainingCount: number;
-  results: Array<{ id: string; code?: string; tempCode?: string; success: boolean; error?: string }>;
-}
-
-/**
- * دالة مساعدة لتوليد معرّف فريد UUID في أي بيئة
- */
-function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  // بديل قياسي لتوليد v4 UUID
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-/**
- * توليد رمز مؤقت محلي في وضع عدم الاتصال (يُستبدل بالنهائي عند المزامنة D15)
- */
-export function generateTemporaryCode(date: string, id: string): string {
-  const shortId = id.replace(/-/g, '').slice(0, 6);
-  return `مؤقت (${date}-${shortId})`;
-}
-
-/**
- * إعداد لقطة أسماء التواقيع وفق القرار D11
- */
-export async function buildSignatoriesSnapshot(requesterName: string): Promise<SignatoriesSettings> {
-  const currentSettings = await getSettings();
-  const snapshot: SignatoriesSettings = { ...currentSettings.signatories };
-
-  // القرار D11: خانة اسم «الطالب» في جدول التواقيع تُعبَّأ تلقائياً باسم مقدم الطلب ما لم يكن الخيار معطلاً
-  if (currentSettings.auto_fill_requester.enabled) {
-    snapshot.requester = requesterName.trim();
-  }
-
-  return snapshot;
-}
+export * from './requestTypes';
+export { triggerAutoSync, startAutoSync } from './requestSync';
+export { generateTemporaryCode, buildSignatoriesSnapshot } from './requestValidation';
 
 export const requestService = {
-  /**
-   * 1. حفظ طلب الشراء الجديد (متصلاً أو غير متصل)
-   */
   async save(data: RequestInput, options?: SaveRequestOptions): Promise<SaveRequestResult> {
-    // التحقق من صحة المدخلات الأساسية عبر Zod
-    if (!data.entity || data.entity.trim() === '') {
-      return { success: false, error: 'الجهة الطالبة حقل إلزامي.' };
-    }
-    if (!data.requester || data.requester.trim() === '') {
-      return { success: false, error: 'مقدم الطلب حقل إلزامي.' };
-    }
-    if (!data.request_date) {
-      return { success: false, error: 'تاريخ طلب الشراء إلزامي.' };
-    }
-    if (!data.items || data.items.length === 0) {
-      return { success: false, error: 'يجب إضافة مادة واحدة على الأقل في الطلب.' };
+    const validationError = validateRequestInput(data);
+    if (validationError) {
+      return { success: false, error: validationError };
     }
 
-    // التحقق من صحة كل مادة
-    for (let i = 0; i < data.items.length; i++) {
-      const item = data.items[i];
-      const parsedItem = RequestItemSchema.safeParse({
-        line_no: item.line_no || (i + 1),
-        name: item.name,
-        specs: item.specs,
-        unit: item.unit,
-        qty: item.qty,
-        unit_price: item.unit_price,
-        notes: item.notes
-      });
+    const isOnline =
+      options?.online !== undefined ? options.online : typeof navigator !== 'undefined' ? navigator.onLine : true;
 
-      if (!parsedItem.success) {
-        return {
-          success: false,
-          error: `خطأ في بيانات المادة رقم ${i + 1}: ${parsedItem.error.issues?.[0]?.message || parsedItem.error.message || 'بيانات غير صالحة'}`
-        };
-      }
-    }
-
-    // حقن حالة الاتصال للتمكين من اختبار ومحاكاة الانقطاع
-    const isOnline = options?.online !== undefined
-      ? options.online
-      : (typeof navigator !== 'undefined' ? navigator.onLine : true);
-
-    // تجهيز لقطة التواقيع
     const signatoriesSnapshot = await buildSignatoriesSnapshot(data.requester);
     const requestId = data.id || generateUUID();
     const tempCode = generateTemporaryCode(data.request_date, requestId);
 
-    // -----------------------------------------------------------------------
-    // وضع غير متصل: الحفظ في صندوق الصادر برمز مؤقت محلي (يُستبدل عند المزامنة)
-    // -----------------------------------------------------------------------
     if (!isOnline) {
       const outboxItem: OutboxRequestItem = {
         id: requestId,
@@ -186,14 +68,12 @@ export const requestService = {
       };
     }
 
-    // -----------------------------------------------------------------------
-    // وضع متصل: استدعاء next_request_code في قاعدة البيانات ثم الإدراج
-    // -----------------------------------------------------------------------
     try {
       const configured = options?.isConfigured !== undefined ? options.isConfigured : isConfigured;
-      const demoAllowed = options?.isOfflineDemoAllowed !== undefined
-        ? options.isOfflineDemoAllowed
-        : (isOfflineDemoAllowed || options?.simulateConflictAttempts !== undefined);
+      const demoAllowed =
+        options?.isOfflineDemoAllowed !== undefined
+          ? options.isOfflineDemoAllowed
+          : isOfflineDemoAllowed || options?.simulateConflictAttempts !== undefined;
 
       if (!configured) {
         if (!demoAllowed) {
@@ -202,7 +82,7 @@ export const requestService = {
             error: 'التطبيق غير مهيّأ، راجع المسؤول'
           };
         }
-        // توليد رمز مطابق لصيغة D3 محلياً مع الحفظ عند عدم ربط Supabase (الوضع التجريبي فقط)
+
         const parts = data.request_date.split('-');
         const day = parseInt(parts[2], 10) || 1;
         const month = parseInt(parts[1], 10) || 1;
@@ -232,35 +112,18 @@ export const requestService = {
         }
 
         if (!insertSuccess) {
-          throw new Error('تعذر حفظ الطلب بعد 5 محاولات بسبب تعارض متكرر في رمز الطلب. يرجى إعادة المحاولة لاحقاً.');
+          return { success: false, error: 'تعذر حفظ الطلب بعد 5 محاولات بسبب تعارض متكرر في رمز الطلب.' };
         }
 
-        const newRequest = {
+        const newSavedRequest = {
+          ...data,
           id: requestId,
           code: generatedCode,
-          request_date: data.request_date,
-          entity: data.entity.trim(),
-          requester: data.requester.trim(),
-          department: data.department?.trim() || null,
-          delivery_place: data.delivery_place?.trim() || null,
-          delivery_date: data.delivery_date || null,
-          currency: data.currency || 'ليرة سورية جديدة',
-          status: 'pending',
           signatories: signatoriesSnapshot,
-          notes: data.notes?.trim() || null,
-          items: data.items.map((item, idx) => ({
-            request_id: requestId,
-            line_no: item.line_no || (idx + 1),
-            name: item.name.trim(),
-            specs: item.specs?.trim() || null,
-            unit: item.unit?.trim() || null,
-            qty: item.qty,
-            unit_price: item.unit_price,
-            notes: item.notes?.trim() || null
-          }))
+          status: 'pending',
+          created_at: new Date().toISOString()
         };
-
-        savedRequests.unshift(newRequest);
+        savedRequests.unshift(newSavedRequest);
         await platform.session.set('spc_saved_requests', JSON.stringify(savedRequests));
 
         return {
@@ -271,37 +134,30 @@ export const requestService = {
         };
       }
 
-      // -----------------------------------------------------------------------
-      // الاتصال بقاعدة بيانات Supabase المباشرة
-      // -----------------------------------------------------------------------
       let generatedCode = '';
-      let insertSuccess = false;
-      let simulateRemaining = options?.simulateConflictAttempts ?? 0;
       const MAX_RETRIES = 5;
+      let inserted = false;
+      let lastError: any = null;
+      let simulateRemaining = options?.simulateConflictAttempts ?? 0;
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        // 1. حجز الرمز من دالة قاعدة البيانات بقفل استشاري (القرار D3)
-        const { data: codeData, error: codeErr } = await supabase.rpc('next_request_code', {
+        const { data: code, error: codeErr } = await supabase.rpc('next_request_code', {
           p_date: data.request_date
         });
 
-        if (codeErr || !codeData) {
-          throw new Error(codeErr?.message || 'تعذر توليد رمز الطلب من الخادم.');
+        if (codeErr || !code) {
+          throw new Error(codeErr?.message || 'فشل توليد رمز طلب الشراء من الخادم.');
         }
 
-        generatedCode = codeData;
+        generatedCode = code;
 
-        // محاكاة تعارض لغرض الاختبار الذاتي F1.4
         if (simulateRemaining > 0) {
           simulateRemaining--;
-          if (attempt === MAX_RETRIES) {
-            throw new Error('تعذر حفظ الطلب بعد 5 محاولات بسبب تعارض متكرر في رمز الطلب. يرجى إعادة المحاولة لاحقاً.');
-          }
+          lastError = { code: '23505', message: 'duplicate key value violates unique constraint requests_code_key' };
           continue;
         }
 
-        // 2. إدراج سجل الطلب في جدول requests
-        const { error: reqInsertErr } = await supabase.from('requests').insert({
+        const requestInsertPayload = {
           id: requestId,
           code: generatedCode,
           request_date: data.request_date,
@@ -314,56 +170,48 @@ export const requestService = {
           status: 'pending',
           signatories: signatoriesSnapshot,
           notes: data.notes?.trim() || null
-        });
+        };
 
-        if (!reqInsertErr) {
-          insertSuccess = true;
-          break;
-        }
+        const { error: reqErr } = await supabase.from('requests').insert(requestInsertPayload);
 
-        // فحص ما إذا كان الخطأ بسبب تعارض code_norm (الخطأ 23505)
-        const isConflict = reqInsertErr.code === '23505' ||
-          reqInsertErr.message?.includes('code_norm') ||
-          reqInsertErr.message?.includes('duplicate key') ||
-          reqInsertErr.message?.includes('23505');
-
-        if (isConflict) {
-          if (attempt === MAX_RETRIES) {
-            throw new Error('تعذر حفظ الطلب بعد 5 محاولات بسبب تعارض متكرر في رمز الطلب. يرجى إعادة المحاولة لاحقاً.');
+        if (reqErr) {
+          lastError = reqErr;
+          if (reqErr.code === '23505' || reqErr.message.includes('unique constraint') || reqErr.message.includes('requests_code_key')) {
+            const delay = 50 * Math.pow(2, attempt - 1);
+            await new Promise((res) => setTimeout(res, delay));
+            continue;
           }
-          // تعارض في الرمز المحجوز -> إعادة طلب الرمز من next_request_code والمحاولة حتى 5 مرات
-          continue;
+          throw reqErr;
         }
 
-        throw new Error(`فشل إدراج الطلب: ${reqInsertErr.message}`);
+        inserted = true;
+        break;
       }
 
-      if (!insertSuccess) {
+      if (!inserted) {
         throw new Error('تعذر حفظ الطلب بعد 5 محاولات بسبب تعارض متكرر في رمز الطلب. يرجى إعادة المحاولة لاحقاً.');
       }
 
-      // 3. إدراج المواد في جدول request_items بعد نجاح إدراج الطلب فقط
-      const itemsToInsert = data.items.map((item, idx) => ({
+      const itemsToInsert = data.items.map((itm, idx) => ({
         request_id: requestId,
-        line_no: item.line_no || (idx + 1),
-        name: item.name.trim(),
-        specs: item.specs?.trim() || null,
-        unit: item.unit?.trim() || null,
-        qty: item.qty,
-        unit_price: item.unit_price,
-        notes: item.notes?.trim() || null
+        line_no: itm.line_no || idx + 1,
+        name: itm.name.trim(),
+        specs: itm.specs?.trim() || null,
+        unit: itm.unit?.trim() || null,
+        qty: itm.qty,
+        unit_price: itm.unit_price,
+        notes: itm.notes?.trim() || null
       }));
 
       const { error: itemsErr } = await supabase.from('request_items').insert(itemsToInsert);
       if (itemsErr) {
-        throw new Error(`فشل إدراج مواد الطلب: ${itemsErr.message}`);
+        console.error('فشل إدراج مواد الطلب:', itemsErr);
+        throw itemsErr;
       }
 
-      // 4. تحديث جدول lookups بالقيم الجديدة دون دمج تلقائي
-      const lookupEntries: Array<{ kind: LookupKind; value: string }> = [
-        { kind: 'entity', value: data.entity },
-        { kind: 'requester', value: data.requester },
-      ];
+      const lookupEntries: Array<{ kind: LookupKind; value: string }> = [];
+      if (data.entity) lookupEntries.push({ kind: 'entity', value: data.entity });
+      if (data.requester) lookupEntries.push({ kind: 'requester', value: data.requester });
       if (data.department) lookupEntries.push({ kind: 'department', value: data.department });
       if (data.delivery_place) lookupEntries.push({ kind: 'delivery_place', value: data.delivery_place });
       for (const itm of data.items) {
@@ -378,7 +226,6 @@ export const requestService = {
         requestId
       };
     } catch (err: any) {
-      // إظهار الخطأ العربي الصريح عند استنفاد محاولات التعارض الخمس دون تحويله لصندوق الصادر
       if (err?.message?.includes('تعذر حفظ الطلب بعد 5 محاولات')) {
         return {
           success: false,
@@ -386,7 +233,6 @@ export const requestService = {
         };
       }
 
-      // عند حدوث خطأ غير متوقع في الشبكة، نحفظ الطلب في صندوق الصادر تلقائياً لضمان عدم ضياع عمل المستخدم
       console.warn('فشل الحفظ المباشر في الخادم، تحويل الطلب لصندوق الصادر:', err);
       const outboxItem: OutboxRequestItem = {
         id: requestId,
@@ -409,190 +255,8 @@ export const requestService = {
     }
   },
 
-  /**
-   * 2. مزامنة الطلبات المعلّقة في صندوق الصادر
-   */
-  async syncOutbox(options?: { online?: boolean }): Promise<SyncOutboxResult> {
-    const isOnline = options?.online !== undefined
-      ? options.online
-      : (typeof navigator !== 'undefined' ? navigator.onLine : true);
+  syncOutbox,
 
-    const queue: OutboxRequestItem[] = await platform.outbox.getQueue();
-
-    if (queue.length === 0) {
-      return { syncedCount: 0, failedCount: 0, remainingCount: 0, results: [] };
-    }
-
-    if (!isOnline) {
-      return {
-        syncedCount: 0,
-        failedCount: 0,
-        remainingCount: queue.length,
-        results: queue.map((q) => ({ id: q.id, success: false, error: 'غير متصل بالإنترنت' }))
-      };
-    }
-
-    if (!isConfigured) {
-      if (!isOfflineDemoAllowed) {
-        return {
-          syncedCount: 0,
-          failedCount: 0,
-          remainingCount: queue.length,
-          results: queue.map((q) => ({ id: q.id, success: false, error: 'التطبيق غير مهيّأ، راجع المسؤول' }))
-        };
-      }
-
-      let syncedCount = 0;
-      const results: SyncOutboxResult['results'] = [];
-      const rawSaved = await platform.session.get('spc_saved_requests');
-      const savedRequests: any[] = rawSaved ? JSON.parse(rawSaved) : [];
-
-      for (const item of queue) {
-        const parts = item.data.request_date.split('-');
-        const day = parseInt(parts[2], 10) || 1;
-        const month = parseInt(parts[1], 10) || 1;
-        const year = (parseInt(parts[0], 10) || 2026) % 100;
-        const prefix = `spc ${day}-${month}-${year}`;
-        const countToday = savedRequests.filter((r) => r.request_date === item.data.request_date).length;
-        const generatedCode = `${prefix} (${countToday + 1})`;
-
-        const existingIdx = savedRequests.findIndex((r) => r.id === item.id);
-        const newReq = {
-          ...item.data,
-          id: item.id,
-          code: generatedCode,
-          signatories: item.signatories,
-          status: 'pending',
-          items: (item.data.items || []).map((itm, idx) => ({
-            id: `item_${item.id}_${idx + 1}`,
-            request_id: item.id,
-            line_no: itm.line_no || (idx + 1),
-            name: itm.name,
-            specs: itm.specs || null,
-            unit: itm.unit || null,
-            qty: itm.qty,
-            unit_price: itm.unit_price,
-            line_total: itm.qty * itm.unit_price,
-            notes: itm.notes || null
-          }))
-        };
-
-        if (existingIdx >= 0) {
-          savedRequests[existingIdx] = newReq;
-        } else {
-          savedRequests.unshift(newReq);
-        }
-
-        // تحديث أيضاً في سجل الطلبات المحلي مع الحفاظ على القائمة الأصلية
-        try {
-          const rawReg = await platform.session.get('spc_registry_requests');
-          let regRequests: any[] = [];
-          if (rawReg) {
-            regRequests = JSON.parse(rawReg);
-          }
-          if (regRequests.length === 0) {
-            const { generateLegacyExcelRows } = await import('../../../scripts/generate-legacy-excel');
-            const { parseLegacyRows } = await import('../../../scripts/import-core');
-            const parsed = parseLegacyRows(generateLegacyExcelRows());
-            regRequests = parsed.requests as any[];
-          }
-          const regIdx = regRequests.findIndex((r) => r.id === item.id);
-          if (regIdx >= 0) {
-            regRequests[regIdx] = newReq;
-          } else {
-            regRequests.unshift(newReq);
-          }
-          await platform.session.set('spc_registry_requests', JSON.stringify(regRequests));
-        } catch {
-          // ignore
-        }
-
-        await platform.outbox.dequeue(item.id);
-        syncedCount++;
-        results.push({ id: item.id, code: generatedCode, tempCode: item.temp_code, success: true });
-      }
-
-      await platform.session.set('spc_saved_requests', JSON.stringify(savedRequests));
-      const remainingQueue = await platform.outbox.getQueue();
-
-      return {
-        syncedCount,
-        failedCount: 0,
-        remainingCount: remainingQueue.length,
-        results
-      };
-    }
-
-    let syncedCount = 0;
-    let failedCount = 0;
-    const results: SyncOutboxResult['results'] = [];
-
-    for (const item of queue) {
-      try {
-        // حجز الرمز الحقيقي من القاعدة
-        const { data: code, error: codeErr } = await supabase.rpc('next_request_code', {
-          p_date: item.data.request_date
-        });
-
-        if (codeErr || !code) {
-          throw new Error(codeErr?.message || 'فشل توليد رمز للطلب المعلّق');
-        }
-
-        // إدراج الطلب بالمعرف الأصلي لمنع التكرار (idempotency)
-        const { error: reqErr } = await supabase.from('requests').upsert({
-          id: item.id,
-          code,
-          request_date: item.data.request_date,
-          entity: item.data.entity.trim(),
-          requester: item.data.requester.trim(),
-          department: item.data.department?.trim() || null,
-          delivery_place: item.data.delivery_place?.trim() || null,
-          delivery_date: item.data.delivery_date || null,
-          currency: item.data.currency || 'ليرة سورية جديدة',
-          status: 'pending',
-          signatories: item.signatories,
-          notes: item.data.notes?.trim() || null
-        }, { onConflict: 'id' });
-
-        if (reqErr) throw new Error(reqErr.message);
-
-        // إدراج المواد
-        const itemsToInsert = item.data.items.map((itm, idx) => ({
-          request_id: item.id,
-          line_no: itm.line_no || (idx + 1),
-          name: itm.name.trim(),
-          specs: itm.specs?.trim() || null,
-          unit: itm.unit?.trim() || null,
-          qty: itm.qty,
-          unit_price: itm.unit_price,
-          notes: itm.notes?.trim() || null
-        }));
-
-        await supabase.from('request_items').upsert(itemsToInsert, { onConflict: 'request_id,line_no' });
-
-        // إزالة الطلب من الصندوق الصادر
-        await platform.outbox.dequeue(item.id);
-        syncedCount++;
-        results.push({ id: item.id, code, tempCode: item.temp_code, success: true });
-      } catch (err: any) {
-        failedCount++;
-        results.push({ id: item.id, tempCode: item.temp_code, success: false, error: err?.message || 'خطأ أثناء المزامنة' });
-      }
-    }
-
-    const remainingQueue = await platform.outbox.getQueue();
-
-    return {
-      syncedCount,
-      failedCount,
-      remainingCount: remainingQueue.length,
-      results
-    };
-  },
-
-  /**
-   * 3. جلب عدد الطلبات المعلّقة في الصندوق الصادر
-   */
   async getPendingCount(): Promise<number> {
     try {
       const queue = await platform.outbox.getQueue();
@@ -602,9 +266,6 @@ export const requestService = {
     }
   },
 
-  /**
-   * 4. جلب كافة الطلبات المعلقة في الصندوق الصادر
-   */
   async getPendingItems(): Promise<OutboxRequestItem[]> {
     try {
       return await platform.outbox.getQueue();
@@ -613,81 +274,7 @@ export const requestService = {
     }
   },
 
-  /**
-   * 5. مسح الصندوق الصادر
-   */
   async clearOutbox(): Promise<void> {
     await platform.outbox.clear();
   }
 };
-
-// ---------------------------------------------------------------------------
-// 3. المزامنة التلقائية مع إعادة المحاولة التصاعدية (Exponential Backoff)
-// ---------------------------------------------------------------------------
-let autoSyncRunning = false;
-let autoSyncTimeout: any = null;
-let retryAttempt = 0;
-
-/**
- * تشغيل محاولة مزامنة تلقائية مع إعادة محاولة تصاعدية عند الفشل
- */
-export async function triggerAutoSync(): Promise<SyncOutboxResult | null> {
-  if (autoSyncRunning) return null;
-  autoSyncRunning = true;
-  try {
-    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-    if (!isOnline) {
-      autoSyncRunning = false;
-      return null;
-    }
-
-    const res = await requestService.syncOutbox({ online: true });
-    if (res.failedCount > 0 && res.remainingCount > 0) {
-      retryAttempt++;
-      const delay = Math.min(1000 * Math.pow(2, retryAttempt), 30000);
-      if (autoSyncTimeout) clearTimeout(autoSyncTimeout);
-      autoSyncTimeout = setTimeout(() => {
-        triggerAutoSync().catch(() => {});
-      }, delay);
-    } else {
-      retryAttempt = 0;
-    }
-    return res;
-  } catch {
-    retryAttempt++;
-    const delay = Math.min(1000 * Math.pow(2, retryAttempt), 30000);
-    if (autoSyncTimeout) clearTimeout(autoSyncTimeout);
-    autoSyncTimeout = setTimeout(() => {
-      triggerAutoSync().catch(() => {});
-    }, delay);
-    return null;
-  } finally {
-    autoSyncRunning = false;
-  }
-}
-
-/**
- * بدء تشغيل الاستماع لعودة الاتصال والمزامنة عند بدء تشغيل التطبيق
- */
-export function startAutoSync(): () => void {
-  // تشغيل فوري عند فتح التطبيق
-  triggerAutoSync().catch(() => {});
-
-  const handleOnline = () => {
-    retryAttempt = 0;
-    triggerAutoSync().catch(() => {});
-  };
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('online', handleOnline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      if (autoSyncTimeout) clearTimeout(autoSyncTimeout);
-    };
-  }
-
-  return () => {
-    if (autoSyncTimeout) clearTimeout(autoSyncTimeout);
-  };
-}
-

@@ -9,23 +9,15 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // قراءة الإعدادات من متغيرات بيئة Vite
-const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : ({} as any);
+const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : ({} as any);
 
-export const SUPABASE_URL: string = 
-  env.VITE_SUPABASE_URL || 
-  '';
+export const SUPABASE_URL: string = env.VITE_SUPABASE_URL || '';
 
-export const SUPABASE_ANON_KEY: string = 
-  env.VITE_SUPABASE_ANON_KEY || 
-  '';
+export const SUPABASE_ANON_KEY: string = env.VITE_SUPABASE_ANON_KEY || '';
 
-export const TEST_EMAIL: string = 
-  env.VITE_TEST_EMAIL || 
-  '';
+export const TEST_EMAIL: string = env.VITE_TEST_EMAIL || '';
 
-export const TEST_PASSWORD: string = 
-  env.VITE_TEST_PASSWORD || 
-  '';
+export const TEST_PASSWORD: string = env.VITE_TEST_PASSWORD || '';
 
 export function isSupabaseConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
@@ -49,7 +41,7 @@ export function getAnonClient(): SupabaseClient {
     cachedAnonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
         persistSession: false,
-        autoRefreshToken: false,
+        autoRefreshToken: false
       }
     });
   }
@@ -75,7 +67,7 @@ export async function getAuthClient(): Promise<SupabaseClient> {
   const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
       persistSession: true,
-      autoRefreshToken: true,
+      autoRefreshToken: true
     }
   });
 

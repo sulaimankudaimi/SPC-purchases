@@ -20,11 +20,11 @@ export interface StatusDistributionItem {
 }
 
 export interface MonthlyDistributionItem {
-  month: string;       // YYYY-MM
-  label: string;       // اسم أو نص الشهر بالعربية
-  count: number;       // عدد الطلبات
+  month: string; // YYYY-MM
+  label: string; // اسم أو نص الشهر بالعربية
+  count: number; // عدد الطلبات
   items_count: number; // عدد المواد
-  amount: number;      // إجمالي القيمة
+  amount: number; // إجمالي القيمة
 }
 
 export interface TopEntityItem {
@@ -218,10 +218,15 @@ export const dashboardService = {
       const formatted = formatRpcDashboardStats(data);
       // حفظ آخر قراءة ناجحة مؤقتاً لعرضها عند انقطاع الاتصال (المرحلة 9)
       if (!fromDate && !toDate) {
-        platform.session.set('spc_cache_dashboard', JSON.stringify({
-          cached_at: new Date().toISOString(),
-          stats: formatted
-        })).catch(() => {});
+        platform.session
+          .set(
+            'spc_cache_dashboard',
+            JSON.stringify({
+              cached_at: new Date().toISOString(),
+              stats: formatted
+            })
+          )
+          .catch(() => {});
       }
 
       return formatted;
@@ -246,4 +251,3 @@ export const dashboardService = {
     }
   }
 };
-

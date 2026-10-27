@@ -98,10 +98,7 @@ export function registerFix3Tests(): void {
       content.includes('requestSingleInstanceLock'),
       'src/main/index.ts يفتقر إلى app.requestSingleInstanceLock لقفل النسخة الواحدة'
     );
-    assert.ok(
-      content.includes('whenReady'),
-      'src/main/index.ts يفتقر إلى app.whenReady()'
-    );
+    assert.ok(content.includes('whenReady'), 'src/main/index.ts يفتقر إلى app.whenReady()');
     assert.ok(
       content.includes('onHeadersReceived'),
       'src/main/index.ts يفتقر إلى onHeadersReceived لتطبيق سياسة أمان المحتوى CSP'
@@ -124,8 +121,8 @@ export function registerFix3Tests(): void {
     // التأكد من عدم تصدير ipcRenderer للعميل
     assert.equal(
       content.includes('export const ipcRenderer') ||
-      content.includes('export { ipcRenderer') ||
-      content.includes('ipcRenderer: ipcRenderer'),
+        content.includes('export { ipcRenderer') ||
+        content.includes('ipcRenderer: ipcRenderer'),
       false,
       'يُحظر تصدير أو كشف كائن ipcRenderer مباشرة إلى واجهة المستخدم'
     );

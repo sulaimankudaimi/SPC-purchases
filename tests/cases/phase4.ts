@@ -71,15 +71,24 @@ export function registerPhase4Tests(): void {
 
     // 3. خطأ البريد غير المؤكد
     const confirmError = translateAuthError({ message: 'Email not confirmed' } as any);
-    assert.ok(confirmError.includes('تأكيد الحساب') || confirmError.includes('تأكيد البريد'), 'فشل ترجمة خطأ تأكيد البريد');
+    assert.ok(
+      confirmError.includes('تأكيد الحساب') || confirmError.includes('تأكيد البريد'),
+      'فشل ترجمة خطأ تأكيد البريد'
+    );
 
     // 4. خطأ المستخدم غير مسجل
     const notFoundError = translateAuthError({ message: 'User not found' } as any);
-    assert.ok(notFoundError.includes('غير موجود') || notFoundError.includes('غير متاح'), 'فشل ترجمة خطأ عدم وجود المستخدم');
+    assert.ok(
+      notFoundError.includes('غير موجود') || notFoundError.includes('غير متاح'),
+      'فشل ترجمة خطأ عدم وجود المستخدم'
+    );
 
     // 5. تنبيه حظر التسجيل العام (D5)
     const signupError = translateAuthError('Signups not allowed for this instance');
-    assert.ok(signupError.includes('التسجيل العام معطّل') || signupError.includes('D5'), 'فشل ترجمة تنبيه تعطيل التسجيل');
+    assert.ok(
+      signupError.includes('التسجيل العام معطّل') || signupError.includes('D5'),
+      'فشل ترجمة تنبيه تعطيل التسجيل'
+    );
   });
 
   // -------------------------------------------------------------------------

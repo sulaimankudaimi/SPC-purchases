@@ -1,7 +1,7 @@
 /**
  * tests/cases/phase2.ts
  * حالات اختبار ترحيلات SQL وسياسات الأمان والمحفزات للمرحلة 2
- * 
+ *
  * المبادئ الحاكمة:
  * - كل البيانات المنشأة تُوسَم بـ entity = 'TEST'.
  * - التنظيف يتم عبر الحذف الناعم (deleted_at = now()).
@@ -9,12 +9,7 @@
  */
 
 import { t, assert } from '../lib/harness';
-import { 
-  getAnonClient, 
-  getAuthClient, 
-  isSupabaseConfigured, 
-  isTestCredentialsConfigured 
-} from '../lib/db';
+import { getAnonClient, getAuthClient, isSupabaseConfigured, isTestCredentialsConfigured } from '../lib/db';
 
 export function registerPhase2Tests(): void {
   // -------------------------------------------------------------------------
@@ -70,10 +65,7 @@ export function registerPhase2Tests(): void {
     const anon = getAnonClient();
 
     // 1. محاولة قراءة جدول requests بدور anon (يجب أن تعيد 0 صفوف بسبب RLS)
-    const { data: readData, error: readError } = await anon
-      .from('requests')
-      .select('id, code')
-      .limit(5);
+    const { data: readData, error: readError } = await anon.from('requests').select('id, code').limit(5);
 
     if (readError) {
       // الرفض بخطأ يعتبر نجاحاً للحظر
@@ -83,14 +75,12 @@ export function registerPhase2Tests(): void {
     }
 
     // 2. محاولة إدراج صف بدور anon (يجب أن تُرفض بخطأ RLS)
-    const { error: insertError } = await anon
-      .from('requests')
-      .insert({
-        code: 'spc-unauth-test',
-        request_date: '2026-10-22',
-        entity: 'TEST',
-        requester: 'مخترق تجريبي'
-      });
+    const { error: insertError } = await anon.from('requests').insert({
+      code: 'spc-unauth-test',
+      request_date: '2026-10-22',
+      entity: 'TEST',
+      requester: 'مخترق تجريبي'
+    });
 
     assert.ok(insertError, 'خطر أمني: نجح دور anon في إدراج صف داخل جدول requests!');
   });
@@ -160,7 +150,7 @@ export function registerPhase2Tests(): void {
       // 3. إدراج مادتين
       const items = [
         { request_id: reqId, line_no: 1, name: 'أنبوب فولاذي تجريبي', qty: 10, unit_price: 250 }, // 2500
-        { request_id: reqId, line_no: 2, name: 'صمام ضغط تجريبي', qty: 4, unit_price: 500 }     // 2000
+        { request_id: reqId, line_no: 2, name: 'صمام ضغط تجريبي', qty: 4, unit_price: 500 } // 2000
       ];
 
       const { error: itemErr } = await auth.from('request_items').insert(items);

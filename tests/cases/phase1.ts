@@ -48,7 +48,10 @@ export function registerPhase1Tests(): void {
     assert.equal(typeof XLSX.utils.book_new, 'function', 'دالة book_new في SheetJS غير معرفة');
 
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([['الرمز', 'المادة'], ['SPC/1', 'أنبوب فولاذي']]);
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['الرمز', 'المادة'],
+      ['SPC/1', 'أنبوب فولاذي']
+    ]);
     XLSX.utils.book_append_sheet(wb, ws, 'TestSheet');
     assert.equal(wb.SheetNames[0], 'TestSheet', 'فشل إنشاء مصنف Excel تجريبي عبر SheetJS');
   });

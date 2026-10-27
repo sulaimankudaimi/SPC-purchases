@@ -38,18 +38,24 @@ async function run() {
   // -------------------------------------------------------------------------
   // static-config-1: تشغيل النافذة وأعلام الأمان
   // -------------------------------------------------------------------------
-  check('static-config-1', 'إعدادات النافذة وأعلام الأمان (contextIsolation=true, sandbox=true, nodeIntegration=false, CSP)', () => {
-    if (!MAIN_WINDOW_CONFIG) throw new Error('إعدادات النافذة الرئيسية مفقودة');
-    if (MAIN_WINDOW_CONFIG.minWidth < 1100 || MAIN_WINDOW_CONFIG.minHeight < 700) {
-      throw new Error(`أبعاد النافذة الدنيا أصغر من 1100x700: ${MAIN_WINDOW_CONFIG.minWidth}x${MAIN_WINDOW_CONFIG.minHeight}`);
+  check(
+    'static-config-1',
+    'إعدادات النافذة وأعلام الأمان (contextIsolation=true, sandbox=true, nodeIntegration=false, CSP)',
+    () => {
+      if (!MAIN_WINDOW_CONFIG) throw new Error('إعدادات النافذة الرئيسية مفقودة');
+      if (MAIN_WINDOW_CONFIG.minWidth < 1100 || MAIN_WINDOW_CONFIG.minHeight < 700) {
+        throw new Error(
+          `أبعاد النافذة الدنيا أصغر من 1100x700: ${MAIN_WINDOW_CONFIG.minWidth}x${MAIN_WINDOW_CONFIG.minHeight}`
+        );
+      }
+      const wp = MAIN_WINDOW_CONFIG.webPreferences;
+      if (wp.nodeIntegration !== false) throw new Error('nodeIntegration يجب أن تكون false تماماً');
+      if (wp.contextIsolation !== true) throw new Error('contextIsolation يجب أن تكون true تماماً');
+      if (wp.sandbox !== true) throw new Error('sandbox يجب أن تكون true تماماً');
+      if (!CSP_HEADER.includes("default-src 'self'")) throw new Error('سياسة CSP تفتقر إلى default-src');
+      if (!CSP_HEADER.includes('https://*.supabase.co')) throw new Error('سياسة CSP لا تسمح بنطاق Supabase');
     }
-    const wp = MAIN_WINDOW_CONFIG.webPreferences;
-    if (wp.nodeIntegration !== false) throw new Error('nodeIntegration يجب أن تكون false تماماً');
-    if (wp.contextIsolation !== true) throw new Error('contextIsolation يجب أن تكون true تماماً');
-    if (wp.sandbox !== true) throw new Error('sandbox يجب أن تكون true تماماً');
-    if (!CSP_HEADER.includes("default-src 'self'")) throw new Error('سياسة CSP تفتقر إلى default-src');
-    if (!CSP_HEADER.includes("https://*.supabase.co")) throw new Error('سياسة CSP لا تسمح بنطاق Supabase');
-  });
+  );
 
   // -------------------------------------------------------------------------
   // static-config-2: فحص الأمان وعدم تضمين مفاتيح service_role في src/ (قاعدة 8 و D5)
@@ -79,7 +85,9 @@ async function run() {
   // -------------------------------------------------------------------------
   check('static-config-3', 'تخطيط PDF: تقسيم الصفحات 1 و12 و13، A4، تصحيح Notes، ومسار الأرشيف (D2, D8, D10)', () => {
     // 1. فحص 1 مادة -> صفحة واحدة
-    const items1 = [{ line_no: 1, name: 'أنبوب', specs: '', unit: 'عدد', qty: 2, unit_price: 100, line_total: 200, notes: '' }];
+    const items1 = [
+      { line_no: 1, name: 'أنبوب', specs: '', unit: 'عدد', qty: 2, unit_price: 100, line_total: 200, notes: '' }
+    ];
     const pages1 = paginate(items1);
     if (pages1.length !== 1) throw new Error(`1 مادة أنتجت ${pages1.length} صفحات والمطلوب 1`);
 

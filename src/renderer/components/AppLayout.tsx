@@ -6,13 +6,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  FilePlus2, 
-  FileSpreadsheet, 
-  Settings, 
-  Terminal, 
-  LogOut, 
+import {
+  LayoutDashboard,
+  FilePlus2,
+  FileSpreadsheet,
+  Settings,
+  Terminal,
+  LogOut,
   UserCheck,
   Clock
 } from 'lucide-react';
@@ -55,7 +55,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     { to: '/new-request', label: 'طلب جديد', icon: FilePlus2, badge: pendingCount },
     { to: '/register', label: 'السجل', icon: FileSpreadsheet },
     { to: '/settings', label: 'الإعدادات', icon: Settings },
-    ...(isDevToolsEnabled ? [{ to: '/selftest', label: 'الفحص الذاتي', icon: Terminal }] : []),
+    ...(isDevToolsEnabled ? [{ to: '/selftest', label: 'الفحص الذاتي', icon: Terminal }] : [])
   ];
 
   return (
@@ -143,14 +143,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
             <span className="font-medium text-slate-700">دائرة الإمداد والتوريد</span>
           </div>
 
-          <div className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md font-mono">
-            SPC-DZR-PURCHASE
-          </div>
+          <div className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md font-mono">SPC-DZR-PURCHASE</div>
         </header>
 
-        <main className="flex-1 p-8">
-          {children}
-        </main>
+        <main className="flex-1 p-8">{children}</main>
       </div>
     </div>
   );

@@ -35,10 +35,11 @@ async function readProjectFile(relPath: string): Promise<string> {
 
   // 2. في بيئة المتصفح / Vite
   if (typeof import.meta !== 'undefined' && (import.meta as any).glob) {
-    const rawMap = (import.meta as any).glob(
-      ['/src/**/*.{ts,tsx}', '/.github/workflows/*.yml', '/.env.example'],
-      { query: '?raw', import: 'default', eager: true }
-    );
+    const rawMap = (import.meta as any).glob(['/src/**/*.{ts,tsx}', '/.github/workflows/*.yml', '/.env.example'], {
+      query: '?raw',
+      import: 'default',
+      eager: true
+    });
     const key = '/' + cleanPath;
     if (rawMap[key]) {
       return rawMap[key];
@@ -78,10 +79,7 @@ async function scanFilesRecursive(dirRelPath: string): Promise<Array<{ path: str
 
   // في بيئة المتصفح: استخدام glob
   if (typeof import.meta !== 'undefined' && (import.meta as any).glob) {
-    const rawMap = (import.meta as any).glob(
-      ['/src/**/*.{ts,tsx}'],
-      { query: '?raw', import: 'default', eager: true }
-    );
+    const rawMap = (import.meta as any).glob(['/src/**/*.{ts,tsx}'], { query: '?raw', import: 'default', eager: true });
     for (const [p, c] of Object.entries(rawMap)) {
       results.push({ path: p, content: c as string });
     }
@@ -112,27 +110,27 @@ export function registerFix2Tests(): void {
   // -------------------------------------------------------------------------
   // F2.2 [AIS]: مع محاكاة isConfigured=false و DEV=false: signIn يعيد success=false بالرسالة العربية
   // -------------------------------------------------------------------------
-  t('F2.2', '[AIS] مع محاكاة isConfigured=false وDEV=false: signIn يعيد خطأ «التطبيق غير مهيّأ» وبلا جلسة', async () => {
-    // محاكاة بيئة إنتاج بدون تهيئة وبدون سماح بالوضع التجريبي
-    const res = await signIn(
-      { email: 'user@spc.sy', password: 'anypassword123' },
-      { isConfigured: false, isOfflineDemoAllowed: false }
-    );
+  t(
+    'F2.2',
+    '[AIS] مع محاكاة isConfigured=false وDEV=false: signIn يعيد خطأ «التطبيق غير مهيّأ» وبلا جلسة',
+    async () => {
+      // محاكاة بيئة إنتاج بدون تهيئة وبدون سماح بالوضع التجريبي
+      const res = await signIn(
+        { email: 'user@spc.sy', password: 'anypassword123' },
+        { isConfigured: false, isOfflineDemoAllowed: false }
+      );
 
-    assert.equal(res.success, false, 'signIn يجب أن يفشل عندما لا يكون التطبيق مهيأً ولا مسموحاً بالتجربة');
-    assert.equal(
-      res.error,
-      'التطبيق غير مهيّأ، راجع المسؤول',
-      'رسالة الخطأ غير مطابقة للنص العربي المعتمد'
-    );
+      assert.equal(res.success, false, 'signIn يجب أن يفشل عندما لا يكون التطبيق مهيأً ولا مسموحاً بالتجربة');
+      assert.equal(res.error, 'التطبيق غير مهيّأ، راجع المسؤول', 'رسالة الخطأ غير مطابقة للنص العربي المعتمد');
 
-    // التأكد من عدم كتابة أي جلسة في منصة التخزين
-    const storedDemo = await platform.session.get('spc_demo_session');
-    assert.equal(storedDemo, null, 'يُحظر حفظ أي جلسة تجريبية في platform.session عند رفض الوضع التجريبي');
+      // التأكد من عدم كتابة أي جلسة في منصة التخزين
+      const storedDemo = await platform.session.get('spc_demo_session');
+      assert.equal(storedDemo, null, 'يُحظر حفظ أي جلسة تجريبية في platform.session عند رفض الوضع التجريبي');
 
-    const storedCurrent = await platform.session.get('spc_current_session');
-    assert.equal(storedCurrent, null, 'يُحظر حفظ أي جلسة في platform.session');
-  });
+      const storedCurrent = await platform.session.get('spc_current_session');
+      assert.equal(storedCurrent, null, 'يُحظر حفظ أي جلسة في platform.session');
+    }
+  );
 
   // -------------------------------------------------------------------------
   // F2.3 [AIS]: ImportTool لا يحوي نص «العينة المعتمدة»
@@ -150,24 +148,22 @@ export function registerFix2Tests(): void {
   // -------------------------------------------------------------------------
   // F2.4 [AIS]: build.yml يحوي VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY ولا يحوي service_role
   // -------------------------------------------------------------------------
-  t('F2.4', '[AIS] سير العمل build.yml يحوي VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY ولا يحوي service_role', async () => {
-    const content = await readProjectFile('.github/workflows/build.yml');
-    assert.ok(content.length > 0, 'تعذر قراءة ملف .github/workflows/build.yml');
+  t(
+    'F2.4',
+    '[AIS] سير العمل build.yml يحوي VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY ولا يحوي service_role',
+    async () => {
+      const content = await readProjectFile('.github/workflows/build.yml');
+      assert.ok(content.length > 0, 'تعذر قراءة ملف .github/workflows/build.yml');
 
-    assert.ok(
-      content.includes('VITE_SUPABASE_URL'),
-      'build.yml لا يمرر متغير VITE_SUPABASE_URL'
-    );
-    assert.ok(
-      content.includes('VITE_SUPABASE_ANON_KEY'),
-      'build.yml لا يمرر متغير VITE_SUPABASE_ANON_KEY'
-    );
-    assert.equal(
-      content.toLowerCase().includes('service_role'),
-      false,
-      'يُحظر تمرير مفتاح service_role في build.yml إطلاقاً'
-    );
-  });
+      assert.ok(content.includes('VITE_SUPABASE_URL'), 'build.yml لا يمرر متغير VITE_SUPABASE_URL');
+      assert.ok(content.includes('VITE_SUPABASE_ANON_KEY'), 'build.yml لا يمرر متغير VITE_SUPABASE_ANON_KEY');
+      assert.equal(
+        content.toLowerCase().includes('service_role'),
+        false,
+        'يُحظر تمرير مفتاح service_role في build.yml إطلاقاً'
+      );
+    }
+  );
 
   // -------------------------------------------------------------------------
   // F2.5 [AIS]: لا مرجع إلى DEV_SUPABASE_ في src
@@ -189,7 +185,7 @@ export function registerFix2Tests(): void {
   // F2.6 [DB]: بحساب الاختبار الحقيقي signIn ينجح، وبكلمة مرور خاطئة يفشل برسالة عربية
   // -------------------------------------------------------------------------
   t('F2.6', '[DB] بحساب الاختبار الحقيقي signIn ينجح، وبكلمة مرور خاطئة يفشل برسالة عربية', async () => {
-    const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : (process?.env as any || {});
+    const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : (process?.env as any) || {};
     const email = env.VITE_TEST_EMAIL || env.SUPABASE_TEST_EMAIL;
     const password = env.VITE_TEST_PASSWORD || env.SUPABASE_TEST_PASSWORD;
 
@@ -201,10 +197,8 @@ export function registerFix2Tests(): void {
     const failRes = await signIn({ email, password: 'wrong_password_spc_999' }, { isConfigured: true });
     assert.equal(failRes.success, false, 'يجب أن يفشل الدخول بكلمة مرور خاطئة');
     assert.ok(
-      failRes.error && (
-        failRes.error.includes('بيانات الدخول غير صحيحة') ||
-        failRes.error.includes('فشل تسجيل الدخول')
-      ),
+      failRes.error &&
+        (failRes.error.includes('بيانات الدخول غير صحيحة') || failRes.error.includes('فشل تسجيل الدخول')),
       'رسالة الخطأ لكلمة المرور الخاطئة يجب أن تكون عربية واضحة'
     );
 

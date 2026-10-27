@@ -82,9 +82,7 @@ export function registerFix6Tests(): void {
       requester: 'م. ناصر العوده',
       department: 'قسم الآلات الدقيقة',
       request_date: '2026-08-20',
-      items: [
-        { line_no: 1, name: 'صمام أمان 2 إنش', qty: 2, unit_price: 15000, unit: 'عدد' }
-      ]
+      items: [{ line_no: 1, name: 'صمام أمان 2 إنش', qty: 2, unit_price: 15000, unit: 'عدد' }]
     };
 
     const req2: RequestInput = {
@@ -92,9 +90,7 @@ export function registerFix6Tests(): void {
       requester: 'م.م. سامي الفرج',
       department: 'قسم الميكانيك',
       request_date: '2026-08-20',
-      items: [
-        { line_no: 1, name: 'طقم جوانات ضغط عالي', qty: 5, unit_price: 4000, unit: 'طقم' }
-      ]
+      items: [{ line_no: 1, name: 'طقم جوانات ضغط عالي', qty: 5, unit_price: 4000, unit: 'طقم' }]
     };
 
     // حفظ طلبين دون اتصال (online: false)
@@ -116,7 +112,11 @@ export function registerFix6Tests(): void {
     const reloadedPlatform = createPlatform();
     const queueAfterReload = await reloadedPlatform.outbox.getQueue();
 
-    assert.equal(queueAfterReload.length, 2, `يجب أن يبقى الطلبان بعد إعادة التحميل المحاكاة ووجد: ${queueAfterReload.length}`);
+    assert.equal(
+      queueAfterReload.length,
+      2,
+      `يجب أن يبقى الطلبان بعد إعادة التحميل المحاكاة ووجد: ${queueAfterReload.length}`
+    );
     const found1 = queueAfterReload.find((item: any) => item.id === res1.requestId || item.id === res1.outboxId);
     const found2 = queueAfterReload.find((item: any) => item.id === res2.requestId || item.id === res2.outboxId);
 
@@ -141,9 +141,7 @@ export function registerFix6Tests(): void {
       entity: 'إدارة الحقول',
       requester: 'أحمد العلي',
       request_date: '2026-08-22',
-      items: [
-        { line_no: 1, name: 'حساس حرارة رقمي', qty: 1, unit_price: 35000, unit: 'عدد' }
-      ]
+      items: [{ line_no: 1, name: 'حساس حرارة رقمي', qty: 1, unit_price: 35000, unit: 'عدد' }]
     };
 
     // وضع الطلب في صندوق الصادر
@@ -253,16 +251,28 @@ export function registerFix6Tests(): void {
 
     // التحقق من سلامة البنية والمطابقة المرجعية
     assert.equal(backupJson.version, 1, 'إصدار النسخة الاحتياطية يجب أن يكون 1');
-    assert.ok(backupJson.requests.length >= 51, `عدد الطلبات في النسخة الاحتياطية يجب أن يكون 51 على الأقل ووجد ${backupJson.requests.length}`);
-    assert.ok(backupJson.request_items.length >= 158, `عدد المواد في النسخة الاحتياطية يجب أن يكون 158 على الأقل ووجد ${backupJson.request_items.length}`);
+    assert.ok(
+      backupJson.requests.length >= 51,
+      `عدد الطلبات في النسخة الاحتياطية يجب أن يكون 51 على الأقل ووجد ${backupJson.requests.length}`
+    );
+    assert.ok(
+      backupJson.request_items.length >= 158,
+      `عدد المواد في النسخة الاحتياطية يجب أن يكون 158 على الأقل ووجد ${backupJson.request_items.length}`
+    );
 
     // التحقق من مجموع المبالغ
     const totalAmount = allItems.reduce((sum, itm) => sum + (itm.line_total || itm.qty * itm.unit_price), 0);
-    assert.ok(totalAmount >= 1974220, `إجمالي المبالغ في النسخة الاحتياطية يجب ألا يقل عن 1,974,220 ووجد ${totalAmount}`);
+    assert.ok(
+      totalAmount >= 1974220,
+      `إجمالي المبالغ في النسخة الاحتياطية يجب ألا يقل عن 1,974,220 ووجد ${totalAmount}`
+    );
 
     // التحقق من اكتمال الإعدادات والقوائم
     assert.ok(backupJson.settings?.signatories?.dept_manager, 'أسماء التواقيع غير مكتملة في النسخة الاحتياطية');
-    assert.ok(backupJson.lookups?.unit?.length && backupJson.lookups.unit.length > 0, 'قوائم الوحدات مفقودة في النسخة الاحتياطية');
+    assert.ok(
+      backupJson.lookups?.unit?.length && backupJson.lookups.unit.length > 0,
+      'قوائم الوحدات مفقودة في النسخة الاحتياطية'
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -307,20 +317,31 @@ export function registerFix6Tests(): void {
       items: r.items
     }));
     await platform.session.set('spc_registry_requests', JSON.stringify(requestsToRestore));
-    await platform.session.set('spc_cache_registry', JSON.stringify({
-      cached_at: new Date().toISOString(),
-      requests: requestsToRestore
-    }));
+    await platform.session.set(
+      'spc_cache_registry',
+      JSON.stringify({
+        cached_at: new Date().toISOString(),
+        requests: requestsToRestore
+      })
+    );
 
     // قراءة البيانات المستعادة والتحقق
     const restoredRequests = await registryService.fetchRequests();
-    assert.equal(restoredRequests.length, 51, `عدد الطلبات بعد الاستعادة يجب أن يكون 51 ووجد ${restoredRequests.length}`);
+    assert.equal(
+      restoredRequests.length,
+      51,
+      `عدد الطلبات بعد الاستعادة يجب أن يكون 51 ووجد ${restoredRequests.length}`
+    );
 
     const totalRestoredItems = restoredRequests.reduce((sum, r) => sum + r.items.length, 0);
     assert.equal(totalRestoredItems, 158, `عدد المواد بعد الاستعادة يجب أن يكون 158 ووجد ${totalRestoredItems}`);
 
     const totalRestoredAmount = restoredRequests.reduce((sum, r) => sum + (r.total_amount || 0), 0);
-    assert.equal(totalRestoredAmount, 1974220, `إجمالي المبالغ بعد الاستعادة يجب أن يكون 1,974,220 ووجد ${totalRestoredAmount}`);
+    assert.equal(
+      totalRestoredAmount,
+      1974220,
+      `إجمالي المبالغ بعد الاستعادة يجب أن يكون 1,974,220 ووجد ${totalRestoredAmount}`
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -330,10 +351,13 @@ export function registerFix6Tests(): void {
     const parsed = await getParsedRealExcel();
 
     // تخزين نسخة في الكاش للقراءة دون اتصال
-    await platform.session.set('spc_cache_registry', JSON.stringify({
-      cached_at: new Date().toISOString(),
-      requests: parsed.requests
-    }));
+    await platform.session.set(
+      'spc_cache_registry',
+      JSON.stringify({
+        cached_at: new Date().toISOString(),
+        requests: parsed.requests
+      })
+    );
 
     // حفظ طلب معلق في الصندوق الصادر للتأكد من دمجه في العرض بوسم «بانتظار المزامنة»
     const outboxId = 'outbox-test-cached-' + Date.now();

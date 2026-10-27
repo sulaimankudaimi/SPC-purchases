@@ -34,7 +34,10 @@ export function registerPhase3Tests(): void {
     for (const st of validStatuses) {
       const parsed = RequestStatusEnum.safeParse(st);
       assert.ok(parsed.success, `فشل قبول الحالة المعتمدة: ${st}`);
-      assert.ok(STATUS_ARABIC_LABELS[st as keyof typeof STATUS_ARABIC_LABELS], `تسمية الحالة بالعربية مفقودة لـ: ${st}`);
+      assert.ok(
+        STATUS_ARABIC_LABELS[st as keyof typeof STATUS_ARABIC_LABELS],
+        `تسمية الحالة بالعربية مفقودة لـ: ${st}`
+      );
     }
 
     const invalidStatus = RequestStatusEnum.safeParse('draft');
@@ -95,7 +98,7 @@ export function registerPhase3Tests(): void {
     assert.equal(sum, 0.3, `الجمع العائم خاطئ: المتوقع 0.3 ووجد ${sum}`);
 
     // جمع مبالغ متعددة
-    const total = addMoney(150.25, 200.75, 49.00);
+    const total = addMoney(150.25, 200.75, 49.0);
     assert.equal(total, 400.0, 'مجموع المبالغ غير متطابق');
 
     // ضرب الكمية بالسعر

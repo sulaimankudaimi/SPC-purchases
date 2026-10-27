@@ -5,8 +5,6 @@
  */
 
 import * as XLSX from 'xlsx';
-import * as path from 'path';
-import * as fs from 'fs';
 
 export function generateLegacyExcelRows(): any[][] {
   const rows: any[][] = [];
@@ -15,9 +13,23 @@ export function generateLegacyExcelRows(): any[][] {
   rows.push(['سجل الشراء المحلي']);
   // صف 2: الرؤوس
   rows.push([
-    'ت', 'ترميز طلب الشراء', 'تاريخ الطلب', 'الجهة الطالبة', 'مقدم الطلب', 'القسم الطالب', 'عنوان التسليم',
-    'اسم المادة / الخدمة', 'المواصفات الفنية', 'وحدة القياس', 'العدد / الكمية', 'السعر التقديري', 'الإجمالي',
-    'ملاحظات', 'حالة الطلب', 'ملف الطلب', 'ملف الفاتورة والطلب'
+    'ت',
+    'ترميز طلب الشراء',
+    'تاريخ الطلب',
+    'الجهة الطالبة',
+    'مقدم الطلب',
+    'القسم الطالب',
+    'عنوان التسليم',
+    'اسم المادة / الخدمة',
+    'المواصفات الفنية',
+    'وحدة القياس',
+    'العدد / الكمية',
+    'السعر التقديري',
+    'الإجمالي',
+    'ملاحظات',
+    'حالة الطلب',
+    'ملف الطلب',
+    'ملف الفاتورة والطلب'
   ]);
 
   // توزيع عدد المواد لكل طلب من الطلبات الـ 51
@@ -72,7 +84,7 @@ export function generateLegacyExcelRows(): any[][] {
     ...Array(7).fill('زوج'),
     ...Array(7).fill('متر'),
     ...Array(6).fill('كغ'),
-    'اجور',   // Q6: يتم توحيدها إلى "أجور"
+    'اجور', // Q6: يتم توحيدها إلى "أجور"
     'ماعون',
     'set',
     'خع',
@@ -139,7 +151,7 @@ export function generateLegacyExcelRows(): any[][] {
         legacyTotal = 1500; // الصحيح 15,000 والمسجل 1500
       } else {
         // المواد الأخرى الـ 156
-        const isLastItem = (nonQ3ItemIndex === nonQ3ItemsCount - 1);
+        const isLastItem = nonQ3ItemIndex === nonQ3ItemsCount - 1;
 
         if (isLastItem) {
           // المادة الأخيرة تضبط المجموع الحسابي ليصل بالضبط إلى 1,944,220
@@ -151,7 +163,7 @@ export function generateLegacyExcelRows(): any[][] {
           qty = 10;
           price = 500;
           legacyTotal = '=L*K'; // معادلة ستتحول لقيمتها المحسوبة
-          remainingRunningTotal += (qty * price);
+          remainingRunningTotal += qty * price;
         } else {
           // أسعار منتظمة موزعة بمعدل ~10,000 إلى 12,000 للسطر
           qty = (nonQ3ItemIndex % 3) + 1; // 1, 2, 3
@@ -166,22 +178,22 @@ export function generateLegacyExcelRows(): any[][] {
 
       const row: any[] = [
         isFirstItemOfReq ? String(reqSeq) : '', // A: ت (مدمج)
-        isFirstItemOfReq ? rawCode : '',         // B: رمز الطلب (مدمج)
-        isFirstItemOfReq ? rawDate : '',         // C: التاريخ (مدمج)
-        isFirstItemOfReq ? entity : '',          // D: الجهة (مدمج)
-        isFirstItemOfReq ? requester : '',       // E: مقدم الطلب (مدمج)
-        isFirstItemOfReq ? dept : '',            // F: القسم (مدمج)
-        isFirstItemOfReq ? delivery : '',        // G: عنوان التسليم (مدمج)
-        `مادة ${reqSeq}-${itmIdx + 1}`,           // H: اسم المادة
+        isFirstItemOfReq ? rawCode : '', // B: رمز الطلب (مدمج)
+        isFirstItemOfReq ? rawDate : '', // C: التاريخ (مدمج)
+        isFirstItemOfReq ? entity : '', // D: الجهة (مدمج)
+        isFirstItemOfReq ? requester : '', // E: مقدم الطلب (مدمج)
+        isFirstItemOfReq ? dept : '', // F: القسم (مدمج)
+        isFirstItemOfReq ? delivery : '', // G: عنوان التسليم (مدمج)
+        `مادة ${reqSeq}-${itmIdx + 1}`, // H: اسم المادة
         itmIdx % 3 === 0 ? '_' : 'مواصفة قياسية', // I: المواصفات (مع تجربة Q5: '_')
-        unit,                                    // J: وحدة القياس
-        qty,                                     // K: العدد / الكمية
-        price,                                   // L: السعر التقديري
-        legacyTotal,                             // M: الإجمالي
-        itmIdx === 0 ? '_' : 'ملاحظة تشغيلية',   // N: ملاحظات
-        statusText,                              // O: حالة الطلب
-        isFirstItemOfReq ? pdfPath : '',         // P: ملف الطلب (مدمج)
-        ''                                       // Q: ملف الفاتورة والطلب (فارغ دائماً)
+        unit, // J: وحدة القياس
+        qty, // K: العدد / الكمية
+        price, // L: السعر التقديري
+        legacyTotal, // M: الإجمالي
+        itmIdx === 0 ? '_' : 'ملاحظة تشغيلية', // N: ملاحظات
+        statusText, // O: حالة الطلب
+        isFirstItemOfReq ? pdfPath : '', // P: ملف الطلب (مدمج)
+        '' // Q: ملف الفاتورة والطلب (فارغ دائماً)
       ];
 
       rows.push(row);
@@ -201,37 +213,45 @@ export function buildLegacyWorkbook(): XLSX.WorkBook {
 
   // تعيين عرض الأعمدة وفق مواصفات السجل الأصلية (SPEC §1.5)
   ws['!cols'] = [
-    { wch: 6 },   // A: ت
-    { wch: 20 },  // B: ترميز طلب الشراء
-    { wch: 15 },  // C: تاريخ الطلب
-    { wch: 24 },  // D: الجهة الطالبة
-    { wch: 20 },  // E: مقدم الطلب
-    { wch: 20 },  // F: القسم الطالب
-    { wch: 25 },  // G: عنوان التسليم
-    { wch: 25 },  // H: اسم المادة
-    { wch: 30 },  // I: المواصفات
-    { wch: 12 },  // J: الوحدة
-    { wch: 14 },  // K: العدد
-    { wch: 15 },  // L: السعر
-    { wch: 15 },  // M: الإجمالي
-    { wch: 20 },  // N: ملاحظات
-    { wch: 25 },  // O: حالة الطلب
-    { wch: 30 },  // P: ملف الطلب
-    { wch: 20 }   // Q: ملف الفاتورة
+    { wch: 6 }, // A: ت
+    { wch: 20 }, // B: ترميز طلب الشراء
+    { wch: 15 }, // C: تاريخ الطلب
+    { wch: 24 }, // D: الجهة الطالبة
+    { wch: 20 }, // E: مقدم الطلب
+    { wch: 20 }, // F: القسم الطالب
+    { wch: 25 }, // G: عنوان التسليم
+    { wch: 25 }, // H: اسم المادة
+    { wch: 30 }, // I: المواصفات
+    { wch: 12 }, // J: الوحدة
+    { wch: 14 }, // K: العدد
+    { wch: 15 }, // L: السعر
+    { wch: 15 }, // M: الإجمالي
+    { wch: 20 }, // N: ملاحظات
+    { wch: 25 }, // O: حالة الطلب
+    { wch: 30 }, // P: ملف الطلب
+    { wch: 20 } // Q: ملف الفاتورة
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
   return wb;
 }
 
-if (process.argv[1] && process.argv[1].endsWith('generate-legacy-excel.ts')) {
-  const targetDir = path.resolve(process.cwd(), 'data-private');
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
-  }
+if (
+  typeof process !== 'undefined' &&
+  Array.isArray(process.argv) &&
+  process.argv[1]?.endsWith('generate-legacy-excel.ts')
+) {
+  (async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const targetDir = path.resolve(process.cwd(), 'data-private');
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
 
-  const filePath = path.join(targetDir, 'سجل_الشراء_المحلي.xlsx');
-  const wb = buildLegacyWorkbook();
-  XLSX.writeFile(wb, filePath);
-  console.log(`Generated successfully: ${filePath} (${fs.statSync(filePath).size} bytes)`);
+    const filePath = path.join(targetDir, 'سجل_الشراء_المحلي.xlsx');
+    const wb = buildLegacyWorkbook();
+    XLSX.writeFile(wb, filePath);
+    console.log(`Generated successfully: ${filePath} (${fs.statSync(filePath).size} bytes)`);
+  })().catch(console.error);
 }

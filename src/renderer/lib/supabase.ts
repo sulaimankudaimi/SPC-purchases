@@ -9,7 +9,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { platform } from './platform';
 
-const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : ({} as any);
+const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : ({} as any);
 
 export const SUPABASE_URL: string = (env.VITE_SUPABASE_URL || '').trim();
 export const SUPABASE_ANON_KEY: string = (env.VITE_SUPABASE_ANON_KEY || '').trim();
@@ -18,7 +18,7 @@ export const isConfigured: boolean = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
 export const isOfflineDemoAllowed: boolean = Boolean(
   (env.DEV === true && env.VITE_ALLOW_OFFLINE_DEMO === 'true') ||
-  (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production')
+    (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production')
 );
 
 /**

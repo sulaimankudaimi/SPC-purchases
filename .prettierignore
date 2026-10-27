@@ -1,0 +1,9 @@
+dist
+out
+node_modules
+coverage
+test-results
+data-private
+bun.lock
+docs/**
+*.md

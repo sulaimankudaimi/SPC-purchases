@@ -3,7 +3,7 @@
  * scripts/extract-assets.mjs
  * سكربت استخراج الصورتين من ملف الاستمارة طلب_اساسي.xlsx
  * بدون أي مكتبات خارجية (Pure Node.js built-ins)
- * 
+ *
  * المسارات المستهدفة:
  * xl/media/image1.png -> assets/spc-logo.png  (295×248)
  * xl/media/image2.png -> assets/header-sy.png (224×116)
@@ -22,7 +22,7 @@ const ASSETS_DIR = path.join(ROOT_DIR, 'assets');
 function getPngDimensions(filePath) {
   const buf = fs.readFileSync(filePath);
   if (buf.length < 24) return null;
-  const isPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
+  const isPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
   if (!isPng) return null;
   return {
     width: buf.readUInt32BE(16),
@@ -38,13 +38,14 @@ function extractImagesPureNode(xlsxPath) {
 
   while (offset < buf.length - 4) {
     const sig = buf.readUInt32LE(offset);
-    if (sig === 0x04034b50) { // Local file header signature
+    if (sig === 0x04034b50) {
+      // Local file header signature
       const compression = buf.readUInt16LE(offset + 8);
       const compressedSize = buf.readUInt32LE(offset + 18);
       const uncompressedSize = buf.readUInt32LE(offset + 22);
       const nameLen = buf.readUInt16LE(offset + 26);
       const extraLen = buf.readUInt16LE(offset + 28);
-      
+
       const fileName = buf.toString('utf8', offset + 30, offset + 30 + nameLen);
       const dataStart = offset + 30 + nameLen + extraLen;
       const dataEnd = dataStart + compressedSize;
