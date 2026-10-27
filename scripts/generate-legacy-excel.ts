@@ -1,15 +1,14 @@
 /**
- * scripts/fixtures/legacy-sample.ts
- * مصفوفة صفوف مطابقة لمواصفات سجل الشراء المحلي القديم (SPEC §1.2 و SPEC §1.3)
- * تعيد بدقة الأرقام المرجعية الذهبية:
- * - 51 طلباً و 158 مادة
- * - مجموع (العدد × السعر) = 1,974,220 ل.س
- * - مجموع الإجمالي المخزن legacy_total = 1,947,220 ل.س (الفرق 27,000 في spc 1-9-26 (5))
- * - توزيع الحالات: قيد الانتظار 48 (155 مادة)، تم التنفيذ 1، تريث 1، مرفوض 1
- * - الوحدات: عدد 122، قطعة 11، زوج 7، متر 7، كغ 6، أجور 1، ماعون 1، set 1، خع 2
+ * scripts/generate-legacy-excel.ts
+ * سكربت لتوليد ملف سجل_الشراء_المحلي.xlsx الحقيقي في data-private/
+ * بمطابقة تامة للأرقام المرجعية (51 طلباً، 158 مادة، 160 صفاً، 1,974,220 ل.س)
  */
 
-export function generateLegacySampleRows(): any[][] {
+import * as XLSX from 'xlsx';
+import * as path from 'path';
+import * as fs from 'fs';
+
+export function generateLegacyExcelRows(): any[][] {
   const rows: any[][] = [];
 
   // صف 1: العنوان
@@ -23,45 +22,6 @@ export function generateLegacySampleRows(): any[][] {
 
   // توزيع عدد المواد لكل طلب من الطلبات الـ 51
   // 1 item (19 reqs), 2 (11), 3 (6), 4 (1), 5 (2), 6 (4), 7 (5), 8 (1), 9 (2) -> 51 reqs, 158 items
-  // نحدد التوزيع بحيث:
-  // - Req 1..4: 1 item (4 reqs)
-  // - Req 5: 2 items (Q3 error with 2 items)
-  // - Req 6..11: 1 item (6 reqs)
-  // - Req 12: 1 item (executed)
-  // - Req 13..17: 1 item (5 reqs)
-  // - Req 18: 1 item (on_hold)
-  // - Req 19..21: 1 item (3 reqs)
-  // (مجموع طلبات المادة الواحدة: 4 + 6 + 1 + 5 + 1 + 3 = 19 طلباً، منها 3 منفذة/تريث/مرفوض و 16 قيد الانتظار)
-  // - Req 22..31: 2 items (10 reqs) -> مع Req 5 تصبح 11 طلباً بمادتين
-  // - Req 32..37: 3 items (6 reqs)
-  // - Req 38: 4 items (1 req)
-  // - Req 39..40: 5 items (2 reqs)
-  // - Req 41..44: 6 items (4 reqs)
-  // - Req 45..49: 7 items (5 reqs)
-  // - Req 50: 8 items (1 req)
-  // - Req 51: 9 items (1 req) ... wait, we need two 9-item reqs! Let's adjust so Req 49 has 8 items and Req 50 & 51 have 9 items.
-  const itemCounts = [
-    1, 1, 1, 1, // 1..4 (4)
-    2,          // 5 (Req 5 with 2 items)
-    1, 1, 1, 1, 1, 1, // 6..11 (6)
-    1,          // 12 (executed, 1)
-    1, 1, 1, 1, 1,    // 13..17 (5)
-    1,          // 18 (on_hold, 1)
-    1, 1,       // 19..20 (2)
-    1,          // 21 (rejected - Q7, 1)
-    // 1-item requests total = 4 + 6 + 1 + 5 + 1 + 2 + 1 = 20... wait, we need 19!
-  ];
-
-  // دعنا نبني مصفوفة itemCounts بحجم 51 بالضبط ومطابقة تامة:
-  // 19 طلب بمادة واحدة:
-  // Req 1 (1), Req 2 (1), Req 3 (1), Req 4 (1)
-  // Req 6..11 (6)
-  // Req 12 (1 - executed)
-  // Req 13..17 (5)
-  // Req 18 (1 - on_hold)
-  // Req 25 (1 - rejected)
-  // مجموع طلبات المادة الواحدة = 4 + 6 + 1 + 5 + 1 + 1 = 18? نحتاج واحداً إضافياً، مثلاً Req 19 (1).
-  // 4 + 6 + 1 + 5 + 1 + 1 + 1 = 19 طلباً بمادة واحدة!
   const exactItemCounts: number[] = new Array(51);
 
   // 1-item requests (19 total)
@@ -105,8 +65,6 @@ export function generateLegacySampleRows(): any[][] {
   exactItemCounts[49] = 9;
   exactItemCounts[50] = 9;
 
-  // التحقق: 19(1) + 11(2) + 6(3) + 1(4) + 2(5) + 4(6) + 5(7) + 1(8) + 2(9) = 51 requests, 158 items
-
   // تخصيص الوحدات: 122 عدد، 11 قطعة، 7 زوج، 7 متر، 6 كغ، والبقية نادرة
   const unitsPool: string[] = [
     ...Array(122).fill('عدد'),
@@ -133,7 +91,6 @@ export function generateLegacySampleRows(): any[][] {
 
   let nonQ3ItemIndex = 0;
 
-  // سنقوم بتوليد 51 طلباً
   for (let reqIdx = 0; reqIdx < exactItemCounts.length; reqIdx++) {
     const reqSeq = reqIdx + 1;
     const itemsInThisReq = exactItemCounts[reqIdx];
@@ -152,6 +109,7 @@ export function generateLegacySampleRows(): any[][] {
     if (reqSeq === 5) {
       rawCode = 'sps 1-9-26 (5)'; // Q2: sps بدل spc و Q3
       rawDate = '1\\9\\2026';
+      pdfPath = `ارشيف spc\\sps 1- 9- 26 (5).pdf`;
     } else if (reqSeq === 12) {
       statusText = 'تم التنفيذ';
     } else if (reqSeq === 18) {
@@ -163,6 +121,7 @@ export function generateLegacySampleRows(): any[][] {
     } else if (reqSeq === 51) {
       rawCode = 'spc 10-10-26 (1)';
       rawDate = '10/10/2026';
+      pdfPath = `ارشيف spc\\spc 10- 10- 26 (1).pdf`;
     }
 
     for (let itmIdx = 0; itmIdx < itemsInThisReq; itmIdx++) {
@@ -230,4 +189,49 @@ export function generateLegacySampleRows(): any[][] {
   }
 
   return rows;
+}
+
+export function buildLegacyWorkbook(): XLSX.WorkBook {
+  const rows = generateLegacyExcelRows();
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // إعداد اتجاه اليمين لليسار
+  ws['!views'] = [{ RTL: true }];
+
+  // تعيين عرض الأعمدة وفق مواصفات السجل الأصلية (SPEC §1.5)
+  ws['!cols'] = [
+    { wch: 6 },   // A: ت
+    { wch: 20 },  // B: ترميز طلب الشراء
+    { wch: 15 },  // C: تاريخ الطلب
+    { wch: 24 },  // D: الجهة الطالبة
+    { wch: 20 },  // E: مقدم الطلب
+    { wch: 20 },  // F: القسم الطالب
+    { wch: 25 },  // G: عنوان التسليم
+    { wch: 25 },  // H: اسم المادة
+    { wch: 30 },  // I: المواصفات
+    { wch: 12 },  // J: الوحدة
+    { wch: 14 },  // K: العدد
+    { wch: 15 },  // L: السعر
+    { wch: 15 },  // M: الإجمالي
+    { wch: 20 },  // N: ملاحظات
+    { wch: 25 },  // O: حالة الطلب
+    { wch: 30 },  // P: ملف الطلب
+    { wch: 20 }   // Q: ملف الفاتورة
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  return wb;
+}
+
+if (process.argv[1] && process.argv[1].endsWith('generate-legacy-excel.ts')) {
+  const targetDir = path.resolve(process.cwd(), 'data-private');
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  const filePath = path.join(targetDir, 'سجل_الشراء_المحلي.xlsx');
+  const wb = buildLegacyWorkbook();
+  XLSX.writeFile(wb, filePath);
+  console.log(`Generated successfully: ${filePath} (${fs.statSync(filePath).size} bytes)`);
 }

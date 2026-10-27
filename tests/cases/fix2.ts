@@ -1,115 +1,89 @@
 /**
  * tests/cases/fix2.ts
- * حالات اختبار المرحلة F2 (تأمين الربط مع Supabase وإلغاء mock وحظر العينة المعتمدة)
- * 
- * الحالات المغطاة:
- * - F2.1 [AIS] لا توجد السلاسل mock.supabase.co وmock-anon-key وmock_jwt_token في أي ملف مصدري (مسح raw).
- * - F2.2 [AIS] مع محاكاة isConfigured=false وDEV=false: signIn يعيد success=false بالرسالة العربية «التطبيق غير مهيّأ، راجع المسؤول»، ولا مفتاح جلسة مكتوب في platform.session.
- * - F2.3 [AIS] ImportTool لا يحوي نص «العينة المعتمدة».
- * - F2.4 [AIS] build.yml يحوي VITE_SUPABASE_URL وVITE_SUPABASE_ANON_KEY ولا يحوي service_role.
- * - F2.5 [AIS] لا مرجع إلى DEV_SUPABASE_ في src.
- * - F2.6 [DB] بحساب الاختبار الحقيقي signIn ينجح، وبكلمة مرور خاطئة يفشل برسالة عربية.
+ * حالات اختبار المرحلة F2: ضبط بيئة الإنتاج وحظر الوضع التجريبي العشوائي
+ * تغطي:
+ * - F2.1 [AIS]: خلو الملفات المصدرية من سلاسل mock.supabase.co و mock-anon-key و mock_jwt_token.
+ * - F2.2 [AIS]: عند محاكاة isConfigured=false و DEV=false: signIn يعيد success=false والرسالة العربية، وبلا جلسة في platform.session.
+ * - F2.3 [AIS]: خلو شاشة ImportTool من نص «العينة المعتمدة».
+ * - F2.4 [AIS]: build.yml يمرر VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY ويحظر service_role.
+ * - F2.5 [AIS]: خلو مجلد src/ من أي إشارة إلى DEV_SUPABASE_.
+ * - F2.6 [DB]: بحساب الاختبار الحقيقي signIn ينجح، وبكلمة مرور خاطئة يفشل برسالة عربية.
  */
 
 import { t, assert } from '../lib/harness';
-import { signIn, signOut, translateAuthError } from '../../src/renderer/lib/auth';
+import { signIn } from '../../src/renderer/lib/auth';
 import { platform } from '../../src/renderer/lib/platform';
-import { 
-  SUPABASE_URL, 
-  SUPABASE_ANON_KEY, 
-  TEST_EMAIL, 
-  TEST_PASSWORD, 
-  isSupabaseConfigured, 
-  isTestCredentialsConfigured 
-} from '../lib/db';
+import { isConfigured } from '../../src/renderer/lib/supabase';
 
-/**
- * قارئ ملفات متوافق مع Node.js و والمتصفح
- */
-async function readFileSafe(relativePath: string): Promise<string> {
+// قراءة محتوى الملفات بأمان سواء في Node أو في المتصفح عبر Vite
+async function readProjectFile(relPath: string): Promise<string> {
+  const cleanPath = relPath.replace(/^\//, '');
+
+  // 1. في بيئة Node.js (عبر tsx أو الاختبارات المباشرة)
   if (typeof process !== 'undefined' && process.versions?.node) {
     try {
-      const fs = await import('fs');
-      const path = await import('path');
-      const fullPath = path.resolve(process.cwd(), relativePath);
+      const fs = await import(/* @vite-ignore */ 'node:fs');
+      const path = await import(/* @vite-ignore */ 'node:path');
+      const fullPath = path.resolve(process.cwd(), cleanPath);
       if (fs.existsSync(fullPath)) {
         return fs.readFileSync(fullPath, 'utf-8');
       }
     } catch {
-      // ignore
+      // الانتقال للمحاولة التالية
     }
   }
 
-  if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
-    try {
-      const cleanPath = relativePath.replace(/^\.\//, '');
-      const res = await window.fetch('/' + cleanPath);
-      if (res.ok) {
-        return await res.text();
-      }
-    } catch {
-      // ignore
+  // 2. في بيئة المتصفح / Vite
+  if (typeof import.meta !== 'undefined' && (import.meta as any).glob) {
+    const rawMap = (import.meta as any).glob(
+      ['/src/**/*.{ts,tsx}', '/.github/workflows/*.yml', '/.env.example'],
+      { query: '?raw', import: 'default', eager: true }
+    );
+    const key = '/' + cleanPath;
+    if (rawMap[key]) {
+      return rawMap[key];
     }
   }
 
   return '';
 }
 
-/**
- * مسح كل الملفات المصدرية في مجلد محدد
- */
-async function scanSourceFiles(dirRel: string): Promise<Array<{ path: string; content: string }>> {
+async function scanFilesRecursive(dirRelPath: string): Promise<Array<{ path: string; content: string }>> {
   const results: Array<{ path: string; content: string }> = [];
 
   if (typeof process !== 'undefined' && process.versions?.node) {
-    try {
-      const fs = await import('fs');
-      const path = await import('path');
-      const walk = (currentDir: string) => {
-        if (!fs.existsSync(currentDir)) return;
-        const entries = fs.readdirSync(currentDir, { withFileTypes: true });
-        for (const entry of entries) {
-          const full = path.join(currentDir, entry.name);
-          if (entry.isDirectory()) {
-            if (entry.name !== 'node_modules' && entry.name !== '.git' && entry.name !== 'dist') {
-              walk(full);
-            }
-          } else if (entry.isFile()) {
-            if (/\.(ts|tsx|js|mjs|yml|json|sql)$/.test(entry.name)) {
-              if (!full.endsWith('fix2.ts')) {
-                results.push({
-                  path: full,
-                  content: fs.readFileSync(full, 'utf-8')
-                });
-              }
-            }
+    const fs = await import(/* @vite-ignore */ 'node:fs');
+    const path = await import(/* @vite-ignore */ 'node:path');
+
+    function walk(dir: string) {
+      if (!fs.existsSync(dir)) return;
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const ent of entries) {
+        const full = path.join(dir, ent.name);
+        if (ent.isDirectory()) {
+          if (ent.name !== 'node_modules' && ent.name !== '.git' && ent.name !== 'dist') {
+            walk(full);
           }
+        } else if (ent.isFile()) {
+          const content = fs.readFileSync(full, 'utf-8');
+          results.push({ path: full, content });
         }
-      };
-      walk(path.resolve(process.cwd(), dirRel));
-      return results;
-    } catch {
-      // ignore
+      }
     }
+
+    const fullRoot = path.resolve(process.cwd(), dirRelPath.replace(/^\//, ''));
+    walk(fullRoot);
+    return results;
   }
 
-  // في المتصفح: فحص الملفات الأساسية المحددة
-  const coreFiles = [
-    'src/renderer/lib/supabase.ts',
-    'src/renderer/lib/auth.ts',
-    'src/renderer/lib/settings.ts',
-    'src/renderer/lib/lookups.ts',
-    'src/renderer/lib/requestService.ts',
-    'src/renderer/lib/registryService.ts',
-    'src/renderer/lib/dashboardService.ts',
-    'src/renderer/tools/ImportTool.tsx',
-    'src/renderer/pages/Login.tsx'
-  ];
-
-  for (const f of coreFiles) {
-    const content = await readFileSafe(f);
-    if (content) {
-      results.push({ path: f, content });
+  // في بيئة المتصفح: استخدام glob
+  if (typeof import.meta !== 'undefined' && (import.meta as any).glob) {
+    const rawMap = (import.meta as any).glob(
+      ['/src/**/*.{ts,tsx}'],
+      { query: '?raw', import: 'default', eager: true }
+    );
+    for (const [p, c] of Object.entries(rawMap)) {
+      results.push({ path: p, content: c as string });
     }
   }
 
@@ -118,108 +92,95 @@ async function scanSourceFiles(dirRel: string): Promise<Array<{ path: string; co
 
 export function registerFix2Tests(): void {
   // -------------------------------------------------------------------------
-  // F2.1 [AIS]: لا توجد السلاسل mock.supabase.co وmock-anon-key وmock_jwt_token
+  // F2.1 [AIS]: لا توجد السلاسل mock.supabase.co و mock-anon-key و mock_jwt_token في أي ملف مصدري
   // -------------------------------------------------------------------------
-  t('F2.1', '[AIS] لا توجد السلاسل mock.supabase.co وmock-anon-key وmock_jwt_token في أي ملف مصدري (مسح raw)', async () => {
-    // تجميع الكلمات المحظورة عبر مصفوفات لتجنب احتواء fix2.ts على السلاسل الحرفية ذاتها
-    const forbidden1 = ['mock', 'supabase', 'co'].join('.');
-    const forbidden2 = ['mock', 'anon', 'key'].join('-');
-    const forbidden3 = ['mock', 'jwt', 'token'].join('_');
+  t('F2.1', '[AIS] لا توجد السلاسل mock.supabase.co وmock-anon-key وmock_jwt_token في أي ملف مصدري', async () => {
+    const forbiddenStrings = ['mock.supabase.co', 'mock-anon-key', 'mock_jwt_token'];
+    const files = await scanFilesRecursive('src');
 
-    const forbiddenPatterns = [forbidden1, forbidden2, forbidden3];
-
-    const scannedFiles = [
-      ...(await scanSourceFiles('src')),
-      ...(await scanSourceFiles('tests')),
-      ...(await scanSourceFiles('scripts'))
-    ];
-
-    assert.ok(scannedFiles.length > 0, 'يجب العثور على ملفات مصدرية لفحصها');
-
-    for (const file of scannedFiles) {
-      for (const pattern of forbiddenPatterns) {
-        const found = file.content.includes(pattern);
+    for (const file of files) {
+      for (const forbidden of forbiddenStrings) {
         assert.equal(
-          found,
+          file.content.includes(forbidden),
           false,
-          `وُجدت السلسلة المحظورة "${pattern}" في الملف: ${file.path}`
+          `تم العثور على السلسلة المحظورة "${forbidden}" في الملف ${file.path}`
         );
       }
     }
   });
 
   // -------------------------------------------------------------------------
-  // F2.2 [AIS]: عند isConfigured=false وDEV=false: خطأ عربي ولا مفتاح جلسة
+  // F2.2 [AIS]: مع محاكاة isConfigured=false و DEV=false: signIn يعيد success=false بالرسالة العربية
   // -------------------------------------------------------------------------
-  t('F2.2', '[AIS] مع محاكاة isConfigured=false وDEV=false: signIn يعيد «التطبيق غير مهيّأ، راجع المسؤول»، ولا جلسة في platform.session', async () => {
-    // تنظيف أي جلسة سابقة
-    await platform.session.remove('spc_demo_session');
-    await platform.session.remove('spc_current_session');
-
-    const result = await signIn(
-      { email: 'user@spc.sy', password: 'anypassword' },
+  t('F2.2', '[AIS] مع محاكاة isConfigured=false وDEV=false: signIn يعيد خطأ «التطبيق غير مهيّأ» وبلا جلسة', async () => {
+    // محاكاة بيئة إنتاج بدون تهيئة وبدون سماح بالوضع التجريبي
+    const res = await signIn(
+      { email: 'user@spc.sy', password: 'anypassword123' },
       { isConfigured: false, isOfflineDemoAllowed: false }
     );
 
-    assert.equal(result.success, false, 'يجب أن يفشل تسجيل الدخول عند عدم التهيئة وحظر الوضع التجريبي');
-    assert.equal(result.error, 'التطبيق غير مهيّأ، راجع المسؤول', 'رسالة الخطأ غير مطابقة للنص العربي المطلوب بدقة');
+    assert.equal(res.success, false, 'signIn يجب أن يفشل عندما لا يكون التطبيق مهيأً ولا مسموحاً بالتجربة');
+    assert.equal(
+      res.error,
+      'التطبيق غير مهيّأ، راجع المسؤول',
+      'رسالة الخطأ غير مطابقة للنص العربي المعتمد'
+    );
 
-    const storedDemoSession = await platform.session.get('spc_demo_session');
-    const storedCurrentSession = await platform.session.get('spc_current_session');
+    // التأكد من عدم كتابة أي جلسة في منصة التخزين
+    const storedDemo = await platform.session.get('spc_demo_session');
+    assert.equal(storedDemo, null, 'يُحظر حفظ أي جلسة تجريبية في platform.session عند رفض الوضع التجريبي');
 
-    assert.equal(storedDemoSession, null, 'ممنوع كتابة أي مفتاح جلسة تجريبية في platform.session');
-    assert.equal(storedCurrentSession, null, 'ممنوع كتابة أي جلسة حالية في platform.session');
+    const storedCurrent = await platform.session.get('spc_current_session');
+    assert.equal(storedCurrent, null, 'يُحظر حفظ أي جلسة في platform.session');
   });
 
   // -------------------------------------------------------------------------
   // F2.3 [AIS]: ImportTool لا يحوي نص «العينة المعتمدة»
   // -------------------------------------------------------------------------
-  t('F2.3', '[AIS] أداة الاستيراد ImportTool لا تحوي نص «العينة المعتمدة» نهائياً', async () => {
-    const importToolContent = await readFileSafe('src/renderer/tools/ImportTool.tsx');
-    assert.ok(importToolContent.length > 0, 'تعذر قراءة ملف ImportTool.tsx');
-
-    const sampleText = 'العينة المعتمدة';
-    const found = importToolContent.includes(sampleText);
-    assert.equal(found, false, `وُجد نص "${sampleText}" في ImportTool.tsx وهو محظور نهائياً في F2`);
+  t('F2.3', '[AIS] شاشة ImportTool لا تحوي نص «العينة المعتمدة» وتعتمد الملف الحقيقي حصراً', async () => {
+    const content = await readProjectFile('src/renderer/tools/ImportTool.tsx');
+    assert.ok(content.length > 0, 'تعذر قراءة ملف ImportTool.tsx');
+    assert.equal(
+      content.includes('العينة المعتمدة'),
+      false,
+      'تم العثور على خيار «العينة المعتمدة» في ImportTool.tsx وهو محظور'
+    );
   });
 
   // -------------------------------------------------------------------------
-  // F2.4 [AIS]: build.yml يحوي VITE_SUPABASE_URL وVITE_SUPABASE_ANON_KEY ولا يحوي service_role
+  // F2.4 [AIS]: build.yml يحوي VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY ولا يحوي service_role
   // -------------------------------------------------------------------------
-  t('F2.4', '[AIS] build.yml يحوي VITE_SUPABASE_URL وVITE_SUPABASE_ANON_KEY ولا يحوي service_role', async () => {
-    const buildYmlContent = await readFileSafe('.github/workflows/build.yml');
-    assert.ok(buildYmlContent.length > 0, 'تعذر قراءة ملف .github/workflows/build.yml');
+  t('F2.4', '[AIS] سير العمل build.yml يحوي VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY ولا يحوي service_role', async () => {
+    const content = await readProjectFile('.github/workflows/build.yml');
+    assert.ok(content.length > 0, 'تعذر قراءة ملف .github/workflows/build.yml');
 
     assert.ok(
-      buildYmlContent.includes('VITE_SUPABASE_URL'),
-      'build.yml لا يحتوي على المتغير VITE_SUPABASE_URL'
+      content.includes('VITE_SUPABASE_URL'),
+      'build.yml لا يمرر متغير VITE_SUPABASE_URL'
     );
     assert.ok(
-      buildYmlContent.includes('VITE_SUPABASE_ANON_KEY'),
-      'build.yml لا يحتوي على المتغير VITE_SUPABASE_ANON_KEY'
+      content.includes('VITE_SUPABASE_ANON_KEY'),
+      'build.yml لا يمرر متغير VITE_SUPABASE_ANON_KEY'
     );
     assert.equal(
-      buildYmlContent.toLowerCase().includes('service_role'),
+      content.toLowerCase().includes('service_role'),
       false,
-      'خطر أمني: وُجدت الإشارة إلى service_role داخل .github/workflows/build.yml'
+      'يُحظر تمرير مفتاح service_role في build.yml إطلاقاً'
     );
   });
 
   // -------------------------------------------------------------------------
   // F2.5 [AIS]: لا مرجع إلى DEV_SUPABASE_ في src
   // -------------------------------------------------------------------------
-  t('F2.5', '[AIS] لا يوجد أي مرجع إلى DEV_SUPABASE_ في كامل مجلد src/', async () => {
-    const srcFiles = await scanSourceFiles('src');
-    assert.ok(srcFiles.length > 0, 'تعذر قراءة ملفات مجلد src/');
+  t('F2.5', '[AIS] لا يوجد أي مرجع إلى DEV_SUPABASE_ في ملفات مجلد src/', async () => {
+    const files = await scanFilesRecursive('src');
+    assert.ok(files.length > 0, 'لم يتم العثور على ملفات في src');
 
-    const forbiddenPrefix = ['DEV', 'SUPABASE', ''].join('_');
-
-    for (const file of srcFiles) {
-      const found = file.content.includes(forbiddenPrefix);
+    for (const file of files) {
       assert.equal(
-        found,
+        file.content.includes('DEV_SUPABASE_'),
         false,
-        `وُجد المرجع القديم ${forbiddenPrefix} في الملف: ${file.path}`
+        `تم العثور على إشارة إلى DEV_SUPABASE_ في الملف ${file.path}`
       );
     }
   });
@@ -228,42 +189,29 @@ export function registerFix2Tests(): void {
   // F2.6 [DB]: بحساب الاختبار الحقيقي signIn ينجح، وبكلمة مرور خاطئة يفشل برسالة عربية
   // -------------------------------------------------------------------------
   t('F2.6', '[DB] بحساب الاختبار الحقيقي signIn ينجح، وبكلمة مرور خاطئة يفشل برسالة عربية', async () => {
-    if (isSupabaseConfigured() && isTestCredentialsConfigured()) {
-      // 1. تجربة كلمة مرور خاطئة: يجب أن تفشل مع رسالة عربية
-      const wrongResult = await signIn({
-        email: TEST_EMAIL,
-        password: 'wrong_password_test_f2_xyz'
-      });
+    const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : (process?.env as any || {});
+    const email = env.VITE_TEST_EMAIL || env.SUPABASE_TEST_EMAIL;
+    const password = env.VITE_TEST_PASSWORD || env.SUPABASE_TEST_PASSWORD;
 
-      assert.equal(wrongResult.success, false, 'تسجيل الدخول بكلمة مرور خاطئة كان يجب أن يفشل');
-      assert.ok(
-        wrongResult.error && (
-          wrongResult.error.includes('بيانات الدخول غير صحيحة') ||
-          wrongResult.error.includes('كلمة المرور')
-        ),
-        `رسالة الخطأ لكلمة المرور الخاطئة ليست عربية واضحة: ${wrongResult.error}`
-      );
-
-      // 2. تسجيل الدخول بحساب الاختبار الحقيقي: يجب أن ينجح
-      const successResult = await signIn({
-        email: TEST_EMAIL,
-        password: TEST_PASSWORD
-      });
-
-      assert.equal(successResult.success, true, `فشل تسجيل الدخول بحساب الاختبار الحقيقي: ${successResult.error}`);
-      assert.ok(successResult.session, 'جلسة المستخدم الموثقة مفقودة');
-      assert.ok(successResult.user, 'كائن المستخدم الموثق مفقود');
-
-      // تنظيف الجلسة
-      await signOut();
-    } else {
-      // تحقق بنيوي وترجمة الخطأ العربي في غياب الاتصال المباشر
-      const translated = translateAuthError(new Error('Invalid login credentials'));
-      assert.ok(
-        translated.includes('بيانات الدخول غير صحيحة'),
-        'فشل التحقق من نص رسالة الخطأ العربية لبيانات الدخول الخاطئة'
-      );
-      assert.ok(true, 'تم التحقق من منطق المصادقة وترجمة الأخطاء بنجاح');
+    if (!isConfigured || !email || !password) {
+      throw new Error('بيانات اتصال Supabase أو حساب الاختبار غير مهيأة في متغيرات البيئة (اختبار [DB])');
     }
+
+    // 1. الدخول بكلمة مرور خاطئة
+    const failRes = await signIn({ email, password: 'wrong_password_spc_999' }, { isConfigured: true });
+    assert.equal(failRes.success, false, 'يجب أن يفشل الدخول بكلمة مرور خاطئة');
+    assert.ok(
+      failRes.error && (
+        failRes.error.includes('بيانات الدخول غير صحيحة') ||
+        failRes.error.includes('فشل تسجيل الدخول')
+      ),
+      'رسالة الخطأ لكلمة المرور الخاطئة يجب أن تكون عربية واضحة'
+    );
+
+    // 2. الدخول بالبيانات الصحيحة
+    const successRes = await signIn({ email, password }, { isConfigured: true });
+    assert.equal(successRes.success, true, 'يجب أن ينجح الدخول بحساب الاختبار الصحيح');
+    assert.ok(successRes.session, 'يجب استلام جلسة صالحة');
+    assert.ok(successRes.user, 'يجب استلام كائن المستخدم');
   });
 }

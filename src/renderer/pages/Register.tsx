@@ -45,7 +45,9 @@ import {
   registryService,
   RegistryRequest,
   RegistryItem,
-  RegistryFilter
+  RegistryFilter,
+  isOfflineRegistry,
+  canExportFinalPdf
 } from '../lib/registryService';
 import { RequestStatus, STATUS_ARABIC_LABELS } from '../../shared/schema';
 import { formatMoney } from '../../shared/money';
@@ -58,6 +60,7 @@ export default function Register() {
   const [requests, setRequests] = useState<RegistryRequest[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [isOfflineCached, setIsOfflineCached] = useState<boolean>(false);
 
   // حالات الفلترة والبحث
   const [search, setSearch] = useState<string>('');
@@ -89,6 +92,7 @@ export default function Register() {
 
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string>('');
+  const [previewReq, setPreviewReq] = useState<RegistryRequest | null>(null);
 
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -105,6 +109,7 @@ export default function Register() {
       };
       const data = await registryService.fetchRequests(filter);
       setRequests(data);
+      setIsOfflineCached(isOfflineRegistry() || data.some((r) => r._isOfflineCached));
     } catch (err: any) {
       setFeedback({ type: 'error', message: err?.message || 'فشل تحميل بيانات السجل' });
     } finally {
@@ -273,6 +278,7 @@ export default function Register() {
         { assetBaseUrl: 'assets' }
       );
 
+      setPreviewReq(req);
       setPreviewHtml(html);
       setPreviewTitle(`استمارة طلب الشراء — ${req.code}`);
     } catch (err: any) {
@@ -290,9 +296,16 @@ export default function Register() {
     }
   };
 
-  // حفظ استمارة HTML محلياً
+  // حفظ استمارة HTML محلياً (وفق القرار D15: يمنع التصدير النهائي قبل المزامنة)
   const handleDownloadPreview = async () => {
     if (!previewHtml) return;
+    if (previewReq && !canExportFinalPdf(previewReq)) {
+      setFeedback({
+        type: 'error',
+        message: 'معاينة فقط — غير متاح للتصدير النهائي قبل المزامنة لضمان صحة الرمز (القرار D15)'
+      });
+      return;
+    }
     const filename = `${previewTitle.replace(/[/\\?%*:|"<>]/g, '_')}.html`;
     await platform.file.saveFile(filename, previewHtml, 'text/html;charset=utf-8');
     setFeedback({ type: 'success', message: `تم حفظ الاستمارة باسم ${filename}` });
@@ -318,8 +331,17 @@ export default function Register() {
     }
   };
 
-  // ألوان شارات الحالة
-  const getStatusBadge = (status: RequestStatus, note?: string | null) => {
+  // ألوان شارات الحالة مع وسم «بانتظار المزامنة»
+  const getStatusBadge = (status: RequestStatus, note?: string | null, req?: RegistryRequest) => {
+    if (req?.is_outbox || req?.needs_sync || (req?.code && req.code.startsWith('مؤقت')) || note === 'بانتظار المزامنة') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+          <Clock className="w-3 h-3 text-amber-600 animate-pulse" />
+          <span>بانتظار المزامنة</span>
+        </span>
+      );
+    }
+
     switch (status) {
       case 'executed':
         return (
@@ -406,6 +428,17 @@ export default function Register() {
           </button>
         </div>
       </div>
+
+      {/* شارة وضع القراءة فقط دون اتصال */}
+      {isOfflineCached && (
+        <div className="p-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl flex items-center justify-between text-xs font-semibold shadow-2xs">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>وضع القراءة فقط دون اتصال</span>
+          </div>
+          <span className="text-[11px] text-amber-700">بيانات السجل معروضة من التخزين المؤقت لآخر مزامنة</span>
+        </div>
+      )}
 
       {/* رسالة التنبيه والإشعارات */}
       {feedback && (
@@ -581,10 +614,19 @@ export default function Register() {
                           </button>
                         </td>
 
-                        {/* رمز الطلب وشارة المراجعة */}
+                        {/* رمز الطلب وشارة المراجعة وشارة بانتظار المزامنة */}
                         <td className="py-3 px-3 font-semibold text-slate-900 font-mono">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{req.code}</span>
+                            {(req.is_outbox || req.needs_sync || req.code.startsWith('مؤقت')) && (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-sans"
+                                title="طلب محفوظ في صندوق الصادر بانتظار المزامنة"
+                              >
+                                <Clock className="w-2.5 h-2.5 text-amber-700" />
+                                <span>بانتظار المزامنة</span>
+                              </span>
+                            )}
                             {req.needs_review && (
                               <span
                                 className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-sans cursor-pointer hover:bg-amber-200"
@@ -637,7 +679,7 @@ export default function Register() {
                             className="cursor-pointer hover:opacity-80 transition"
                             title="اضغط لتغيير حالة الطلب وتوثيق السبب"
                           >
-                            {getStatusBadge(req.status, req.status_note)}
+                            {getStatusBadge(req.status, req.status_note, req)}
                           </button>
                         </td>
 
@@ -1087,10 +1129,20 @@ export default function Register() {
                 </button>
                 <button
                   onClick={handleDownloadPreview}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-200 transition cursor-pointer"
+                  disabled={previewReq ? !canExportFinalPdf(previewReq) : false}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
+                    previewReq && !canExportFinalPdf(previewReq)
+                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer'
+                  }`}
+                  title={
+                    previewReq && !canExportFinalPdf(previewReq)
+                      ? 'معاينة فقط — غير متاح للتصدير النهائي قبل المزامنة لضمان صحة الرمز (القرار D15)'
+                      : 'حفظ ملف الاستمارة محلياً'
+                  }
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>حفظ ملف</span>
+                  <span>{previewReq && !canExportFinalPdf(previewReq) ? 'معاينة فقط (D15)' : 'حفظ ملف'}</span>
                 </button>
                 <button
                   onClick={() => setPreviewHtml(null)}

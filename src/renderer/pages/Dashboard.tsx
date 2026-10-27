@@ -112,6 +112,7 @@ function CustomBarTooltip({ active, payload, label }: any) {
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
   const [activeFilterLabel, setActiveFilterLabel] = useState<string>('all');
@@ -119,11 +120,14 @@ export default function Dashboard() {
   // جلب الإحصاءات حصراً من دالة dashboardService.getDashboardStats
   const loadStats = useCallback(async (from?: string, to?: string) => {
     setIsLoading(true);
+    setErrorMessage(null);
     try {
       const data = await dashboardService.getDashboardStats(from, to);
       setStats(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('فشل جلب إحصائيات لوحة التحكم:', err);
+      setStats(null);
+      setErrorMessage(err?.message || 'تعذر جلب إحصائيات لوحة التحكم من الخادم. يرجى مراجعة المسؤول.');
     } finally {
       setIsLoading(false);
     }
@@ -174,6 +178,17 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6" dir="rtl">
+      {/* شارة وضع القراءة فقط دون اتصال */}
+      {stats?._isOfflineCached && (
+        <div className="p-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl flex items-center justify-between text-xs font-semibold shadow-2xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>وضع القراءة فقط دون اتصال</span>
+          </div>
+          <span className="text-[11px] text-amber-700">بيانات لوحة التحكم معروضة من التخزين المؤقت لآخر مزامنة</span>
+        </div>
+      )}
+
       {/* 1. الترويسة ومرشحات الفترة الزمنية */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -286,6 +301,17 @@ export default function Dashboard() {
           )}
         </form>
       </div>
+
+      {/* رسالة الخطأ عند فشل جلب البيانات من الخادم */}
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl flex items-start gap-3 shadow-sm">
+          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h4 className="font-bold text-sm">خطأ في جلب بيانات لوحة التحكم</h4>
+            <p className="text-xs leading-relaxed">{errorMessage}</p>
+          </div>
+        </div>
+      )}
 
       {/* 2. بطاقات المؤشرات الرئيسية (4 بطاقات رئيسية) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

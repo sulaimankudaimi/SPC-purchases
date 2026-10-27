@@ -57,6 +57,7 @@ export interface SaveRequestResult {
 
 export interface OutboxRequestItem {
   id: string;
+  temp_code: string;
   data: RequestInput;
   signatories: SignatoriesSettings;
   status: 'pending_code';
@@ -67,7 +68,7 @@ export interface SyncOutboxResult {
   syncedCount: number;
   failedCount: number;
   remainingCount: number;
-  results: Array<{ id: string; code?: string; success: boolean; error?: string }>;
+  results: Array<{ id: string; code?: string; tempCode?: string; success: boolean; error?: string }>;
 }
 
 /**
@@ -83,6 +84,14 @@ function generateUUID(): string {
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+}
+
+/**
+ * توليد رمز مؤقت محلي في وضع عدم الاتصال (يُستبدل بالنهائي عند المزامنة D15)
+ */
+export function generateTemporaryCode(date: string, id: string): string {
+  const shortId = id.replace(/-/g, '').slice(0, 6);
+  return `مؤقت (${date}-${shortId})`;
 }
 
 /**
@@ -148,13 +157,15 @@ export const requestService = {
     // تجهيز لقطة التواقيع
     const signatoriesSnapshot = await buildSignatoriesSnapshot(data.requester);
     const requestId = data.id || generateUUID();
+    const tempCode = generateTemporaryCode(data.request_date, requestId);
 
     // -----------------------------------------------------------------------
-    // وضع غير متصل: الحفظ في صندوق الصادر بحالة «بانتظار الرمز»
+    // وضع غير متصل: الحفظ في صندوق الصادر برمز مؤقت محلي (يُستبدل عند المزامنة)
     // -----------------------------------------------------------------------
     if (!isOnline) {
       const outboxItem: OutboxRequestItem = {
         id: requestId,
+        temp_code: tempCode,
         data: {
           ...data,
           id: requestId
@@ -170,7 +181,8 @@ export const requestService = {
         success: true,
         offline: true,
         outboxId: requestId,
-        code: 'بانتظار الرمز'
+        code: tempCode,
+        requestId
       };
     }
 
@@ -378,6 +390,7 @@ export const requestService = {
       console.warn('فشل الحفظ المباشر في الخادم، تحويل الطلب لصندوق الصادر:', err);
       const outboxItem: OutboxRequestItem = {
         id: requestId,
+        temp_code: tempCode,
         data: { ...data, id: requestId },
         signatories: signatoriesSnapshot,
         status: 'pending_code',
@@ -389,7 +402,8 @@ export const requestService = {
         success: true,
         offline: true,
         outboxId: requestId,
-        code: 'بانتظار الرمز',
+        code: tempCode,
+        requestId,
         error: err?.message
       };
     }
@@ -429,7 +443,7 @@ export const requestService = {
       }
 
       let syncedCount = 0;
-      const results: Array<{ id: string; code?: string; success: boolean; error?: string }> = [];
+      const results: SyncOutboxResult['results'] = [];
       const rawSaved = await platform.session.get('spc_saved_requests');
       const savedRequests: any[] = rawSaved ? JSON.parse(rawSaved) : [];
 
@@ -442,16 +456,60 @@ export const requestService = {
         const countToday = savedRequests.filter((r) => r.request_date === item.data.request_date).length;
         const generatedCode = `${prefix} (${countToday + 1})`;
 
-        savedRequests.unshift({
+        const existingIdx = savedRequests.findIndex((r) => r.id === item.id);
+        const newReq = {
           ...item.data,
           id: item.id,
           code: generatedCode,
-          signatories: item.signatories
-        });
+          signatories: item.signatories,
+          status: 'pending',
+          items: (item.data.items || []).map((itm, idx) => ({
+            id: `item_${item.id}_${idx + 1}`,
+            request_id: item.id,
+            line_no: itm.line_no || (idx + 1),
+            name: itm.name,
+            specs: itm.specs || null,
+            unit: itm.unit || null,
+            qty: itm.qty,
+            unit_price: itm.unit_price,
+            line_total: itm.qty * itm.unit_price,
+            notes: itm.notes || null
+          }))
+        };
+
+        if (existingIdx >= 0) {
+          savedRequests[existingIdx] = newReq;
+        } else {
+          savedRequests.unshift(newReq);
+        }
+
+        // تحديث أيضاً في سجل الطلبات المحلي مع الحفاظ على القائمة الأصلية
+        try {
+          const rawReg = await platform.session.get('spc_registry_requests');
+          let regRequests: any[] = [];
+          if (rawReg) {
+            regRequests = JSON.parse(rawReg);
+          }
+          if (regRequests.length === 0) {
+            const { generateLegacyExcelRows } = await import('../../../scripts/generate-legacy-excel');
+            const { parseLegacyRows } = await import('../../../scripts/import-core');
+            const parsed = parseLegacyRows(generateLegacyExcelRows());
+            regRequests = parsed.requests as any[];
+          }
+          const regIdx = regRequests.findIndex((r) => r.id === item.id);
+          if (regIdx >= 0) {
+            regRequests[regIdx] = newReq;
+          } else {
+            regRequests.unshift(newReq);
+          }
+          await platform.session.set('spc_registry_requests', JSON.stringify(regRequests));
+        } catch {
+          // ignore
+        }
 
         await platform.outbox.dequeue(item.id);
         syncedCount++;
-        results.push({ id: item.id, code: generatedCode, success: true });
+        results.push({ id: item.id, code: generatedCode, tempCode: item.temp_code, success: true });
       }
 
       await platform.session.set('spc_saved_requests', JSON.stringify(savedRequests));
@@ -467,7 +525,7 @@ export const requestService = {
 
     let syncedCount = 0;
     let failedCount = 0;
-    const results: Array<{ id: string; code?: string; success: boolean; error?: string }> = [];
+    const results: SyncOutboxResult['results'] = [];
 
     for (const item of queue) {
       try {
@@ -515,10 +573,10 @@ export const requestService = {
         // إزالة الطلب من الصندوق الصادر
         await platform.outbox.dequeue(item.id);
         syncedCount++;
-        results.push({ id: item.id, code, success: true });
+        results.push({ id: item.id, code, tempCode: item.temp_code, success: true });
       } catch (err: any) {
         failedCount++;
-        results.push({ id: item.id, success: false, error: err?.message || 'خطأ أثناء المزامنة' });
+        results.push({ id: item.id, tempCode: item.temp_code, success: false, error: err?.message || 'خطأ أثناء المزامنة' });
       }
     }
 
@@ -562,3 +620,74 @@ export const requestService = {
     await platform.outbox.clear();
   }
 };
+
+// ---------------------------------------------------------------------------
+// 3. المزامنة التلقائية مع إعادة المحاولة التصاعدية (Exponential Backoff)
+// ---------------------------------------------------------------------------
+let autoSyncRunning = false;
+let autoSyncTimeout: any = null;
+let retryAttempt = 0;
+
+/**
+ * تشغيل محاولة مزامنة تلقائية مع إعادة محاولة تصاعدية عند الفشل
+ */
+export async function triggerAutoSync(): Promise<SyncOutboxResult | null> {
+  if (autoSyncRunning) return null;
+  autoSyncRunning = true;
+  try {
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    if (!isOnline) {
+      autoSyncRunning = false;
+      return null;
+    }
+
+    const res = await requestService.syncOutbox({ online: true });
+    if (res.failedCount > 0 && res.remainingCount > 0) {
+      retryAttempt++;
+      const delay = Math.min(1000 * Math.pow(2, retryAttempt), 30000);
+      if (autoSyncTimeout) clearTimeout(autoSyncTimeout);
+      autoSyncTimeout = setTimeout(() => {
+        triggerAutoSync().catch(() => {});
+      }, delay);
+    } else {
+      retryAttempt = 0;
+    }
+    return res;
+  } catch {
+    retryAttempt++;
+    const delay = Math.min(1000 * Math.pow(2, retryAttempt), 30000);
+    if (autoSyncTimeout) clearTimeout(autoSyncTimeout);
+    autoSyncTimeout = setTimeout(() => {
+      triggerAutoSync().catch(() => {});
+    }, delay);
+    return null;
+  } finally {
+    autoSyncRunning = false;
+  }
+}
+
+/**
+ * بدء تشغيل الاستماع لعودة الاتصال والمزامنة عند بدء تشغيل التطبيق
+ */
+export function startAutoSync(): () => void {
+  // تشغيل فوري عند فتح التطبيق
+  triggerAutoSync().catch(() => {});
+
+  const handleOnline = () => {
+    retryAttempt = 0;
+    triggerAutoSync().catch(() => {});
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      if (autoSyncTimeout) clearTimeout(autoSyncTimeout);
+    };
+  }
+
+  return () => {
+    if (autoSyncTimeout) clearTimeout(autoSyncTimeout);
+  };
+}
+

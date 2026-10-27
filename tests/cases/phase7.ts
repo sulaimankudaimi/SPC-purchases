@@ -1,106 +1,79 @@
 /**
  * tests/cases/phase7.ts
- * حالات اختبار المرحلة 7: استيراد بيانات السجل القديم ومطابقة الأرقام الذهبية
- * تغطي: import-core.ts، فك الدمج الرأسي، القواعد Q1–Q9، الأرقام الذهبية (51 طلباً/158 مادة/1,974,220)،
- * وحظر استخدام service_role.
+ * حالات اختبار المرحلة 7: معالجة الحالات الحدية (Q1–Q9) وفك الدمج الرأسي
+ * تستخدم العينة التركيبية للحالات الحدية فقط (synthetic-edge-cases.ts)
+ * ملاحظة: التحقق من الأرقام المرجعية الحقيقية (51 طلباً، 158 مادة...) محصور بـ tests/cases/fix4.ts
  */
 
 import { t, assert } from '../lib/harness';
 import { parseLegacyRows } from '../../scripts/import-core';
-import { generateLegacySampleRows } from '../../scripts/fixtures/legacy-sample';
+import { generateSyntheticEdgeCaseRows } from '../../scripts/fixtures/synthetic-edge-cases';
 
 export function registerPhase7Tests(): void {
-  // توليد صفوف العينة المعتمدة المطابقة للملف الأصلي
-  const legacyRows = generateLegacySampleRows();
-  const parsed = parseLegacyRows(legacyRows);
+  // توليد صفوف العينة التركيبية للحالات الحدية
+  const edgeRows = generateSyntheticEdgeCaseRows();
+  const parsed = parseLegacyRows(edgeRows);
 
   // -------------------------------------------------------------------------
-  // T-7.1: فك دمج الخلايا الرأسية وإنتاج 51 طلباً و 158 مادة بدقة
+  // T-7.1: فك دمج الخلايا الرأسية ومعالجة صفوف المواد المتتالية للطلب
   // -------------------------------------------------------------------------
-  t('T-7.1', 'فك دمج الخلايا الرأسية وإنتاج 51 طلباً و 158 مادة (SPEC §1.2)', () => {
-    assert.equal(parsed.requests.length, 51, `عدد الطلبات غير مطابق: المتوقع 51 ووجد ${parsed.requests.length}`);
-    assert.equal(parsed.items.length, 158, `عدد المواد غير مطابق: المتوقع 158 ووجد ${parsed.items.length}`);
-    assert.equal(parsed.report.totalRequests, 51, 'تقرير الطلبات غير مطابق');
-    assert.equal(parsed.report.totalItems, 158, 'تقرير المواد غير مطابق');
+  t('T-7.1', 'فك دمج الخلايا الرأسية ومعالجة صفوف المواد المتتالية للطلب', () => {
+    assert.equal(parsed.requests.length, 5, 'عدد الطلبات في عينة الحالات الحدية يجب أن يكون 5');
+    assert.equal(parsed.items.length, 6, 'عدد المواد في عينة الحالات الحدية يجب أن يكون 6 (الطلب الثاني يحوي مادتين)');
 
-    // فحص توزيع عدد المواد لكل طلب
-    const countsMap = new Map<number, number>();
-    for (const r of parsed.requests) {
-      const c = r.items.length;
-      countsMap.set(c, (countsMap.get(c) || 0) + 1);
+    const reqWith2Items = parsed.requests.find((r) => r.code.includes('sps 1-9-26 (5)'));
+    assert.ok(reqWith2Items, 'الطلب متعدد المواد غير موجود');
+    if (reqWith2Items) {
+      assert.equal(reqWith2Items.items.length, 2, 'الطلب الثاني يجب أن يحتوي على مادتين مفكوكتي الدمج');
+      assert.equal(reqWith2Items.items[0].name, 'مانع تسرب', 'المادة الأولى غير مطابقة');
+      assert.equal(reqWith2Items.items[1].name, 'حلقة مطاطية', 'المادة الثانية غير مطابقة');
     }
-
-    // 1 item (19 reqs), 2 (11), 3 (6), 4 (1), 5 (2), 6 (4), 7 (5), 8 (1), 9 (2)
-    assert.equal(countsMap.get(1), 19, 'عدد الطلبات ذات المادة الواحدة يجب أن يكون 19');
-    assert.equal(countsMap.get(2), 11, 'عدد الطلبات ذات المادتين يجب أن يكون 11');
-    assert.equal(countsMap.get(3), 6, 'عدد الطلبات ذات الـ 3 مواد يجب أن يكون 6');
   });
 
   // -------------------------------------------------------------------------
-  // T-7.2: التحقق من الأرقام الذهبية (مجموع 1,974,220 والفرق 27,000)
+  // T-7.2: تطبيق قاعدة Q1 (التواريخ) وقاعدة Q2 (الرموز وتطبيعها)
   // -------------------------------------------------------------------------
-  t('T-7.2', 'التحقق من الأرقام الذهبية (المجموع الحسابي 1,974,220 والفرق 27,000)', () => {
-    // مجموع (العدد × السعر)
-    assert.equal(
-      parsed.report.calculatedSum,
-      1974220,
-      `المجموع الحسابي غير مطابق: المتوقع 1,974,220 ووجد ${parsed.report.calculatedSum}`
-    );
-
-    // مجموع الإجمالي المخزن (legacy_total)
-    assert.equal(
-      parsed.report.legacyStoredSum,
-      1947220,
-      `مجموع الإجمالي المخزن غير مطابق: المتوقع 1,947,220 ووجد ${parsed.report.legacyStoredSum}`
-    );
-
-    // الفرق 27,000
-    assert.equal(
-      parsed.report.sumDifference,
-      27000,
-      `الفرق غير مطابق: المتوقع 27,000 ووجد ${parsed.report.sumDifference}`
-    );
-  });
-
-  // -------------------------------------------------------------------------
-  // T-7.3: تطبيق قواعد Q1 (التواريخ) و Q2 (الرموز) و Q3 (السطران 1500 و needs_review)
-  // -------------------------------------------------------------------------
-  t('T-7.3', 'تطبيق قواعد Q1 (التواريخ) و Q2 (الرموز) و Q3 (السطران 1500 و needs_review)', () => {
-    // Q1: فحص صيغة التاريخ المحول
+  t('T-7.2', 'تطبيق قاعدة Q1 (التواريخ بفاصلة مائلة \\) وقاعدة Q2 (تطبيع الرموز)', () => {
     const firstReq = parsed.requests[0];
-    assert.equal(firstReq.request_date, '2026-08-19', 'فشل تحويل التاريخ إلى صيغة ISO');
-
-    // Q2: تطبيع الرمز والاحتفاظ بالرمز الأصلي
+    assert.equal(firstReq.request_date, '2026-08-19', 'فشل تحويل التاريخ 19\\8\\2026 إلى ISO 2026-08-19');
     assert.equal(firstReq.code_norm, 'spc19-8-26(1)', 'فشل تطبيع الرمز code_norm');
 
-    // Q3: فحص الطلب رقم 5 (spc 1-9-26 (5))
-    const req5 = parsed.requests.find((r) => r.code_norm.includes('1-9-26(5)'));
-    assert.ok(req5, 'الطلب رقم 5 غير موجود');
-    if (req5) {
-      assert.equal(req5.needs_review, true, 'الطلب رقم 5 يجب أن يعلم بـ needs_review=true');
-      const itemQ3 = req5.items[0];
-      assert.equal(itemQ3.qty, 50, 'الكمية يجب أن تكون 50');
-      assert.equal(itemQ3.unit_price, 300, 'السعر يجب أن يكون 300');
-      assert.equal(itemQ3.legacy_total, 1500, 'legacy_total يجب أن يكون 1500');
-      assert.equal(itemQ3.line_total, 15000, 'line_total المحسوب يجب أن يكون 15,000');
+    const req2 = parsed.requests[1];
+    assert.equal(req2.code_norm, 'sps1-9-26(5)', 'فشل تطبيع رمز sps');
+  });
+
+  // -------------------------------------------------------------------------
+  // T-7.3: تطبيق قاعدة Q3 (السطران 1500 ووسم needs_review)
+  // -------------------------------------------------------------------------
+  t('T-7.3', 'تطبيق قاعدة Q3 (السطران 50 و300 و1500 ووسم needs_review)', () => {
+    const reqQ3 = parsed.requests.find((r) => r.code.includes('sps 1-9-26 (5)'));
+    assert.ok(reqQ3, 'طلب خطأ الحساب Q3 غير موجود');
+    if (reqQ3) {
+      assert.equal(reqQ3.needs_review, true, 'الطلب يجب أن يعلم بـ needs_review=true');
+      assert.equal(reqQ3.items[0].qty, 50, 'الكمية يجب أن تكون 50');
+      assert.equal(reqQ3.items[0].unit_price, 300, 'السعر يجب أن يكون 300');
+      assert.equal(reqQ3.items[0].legacy_total, 1500, 'legacy_total يجب أن يكون 1500');
+      assert.equal(reqQ3.items[0].line_total, 15000, 'line_total المحسوب يجب أن يكون 15,000');
     }
   });
 
   // -------------------------------------------------------------------------
-  // T-7.4: تطبيق قواعد Q5 (_) و Q6 (توحيد أجور) و Q7 (رفض في status_note)
+  // T-7.4: تطبيق قاعدة Q5 (_) وقاعدة Q6 (توحيد أجور)
   // -------------------------------------------------------------------------
-  t('T-7.4', 'تطبيق قواعد Q5 (_) و Q6 (توحيد أجور) و Q7 (حالة الرفض ونصه الأصلي)', () => {
-    // Q5: التأكد من عدم وجود أي قيمة '_' في المواصفات أو الملاحظات
+  t('T-7.4', 'تطبيق قاعدة Q5 (_) وقاعدة Q6 (توحيد الهمزة في أجور)', () => {
     for (const itm of parsed.items) {
       assert.ok(itm.specs !== '_', 'القيمة "_" لم تحول إلى NULL في المواصفات');
       assert.ok(itm.notes !== '_', 'القيمة "_" لم تحول إلى NULL في الملاحظات');
     }
 
-    // Q6: توحيد الهمزة في "أجور" فقط
-    assert.ok(parsed.report.uniqueUnits.includes('أجور'), 'الوحدة "أجور" الموحدة غير موجودة');
-    assert.equal(parsed.report.uniqueUnits.includes('اجور'), false, 'الوحدة غير الموحدة "اجور" لا تزال موجودة');
+    assert.ok(parsed.report.uniqueUnits.includes('أجور'), 'الوحدة الموحدة "أجور" غير موجودة في التقرير');
+    assert.equal(parsed.report.uniqueUnits.includes('اجور'), false, 'الوحدة غير الموحدة "اجور" يجب ألا تظهر');
+  });
 
-    // Q7: فحص طلب الرفض
+  // -------------------------------------------------------------------------
+  // T-7.5: تطبيق قاعدة Q7 (نص الرفض الأصلي) وقاعدة Q8 (حساب المعادلات)
+  // -------------------------------------------------------------------------
+  t('T-7.5', 'تطبيق قاعدة Q7 (نص الرفض في status_note) وقاعدة Q8 (حساب =L*K)', () => {
     const rejectedReq = parsed.requests.find((r) => r.status === 'rejected');
     assert.ok(rejectedReq, 'طلب الرفض غير موجود');
     if (rejectedReq) {
@@ -110,32 +83,21 @@ export function registerPhase7Tests(): void {
         'النص الأصلي لحالة الرفض مفقود من status_note'
       );
     }
+
+    const formulaReq = parsed.requests.find((r) => r.code.includes('spc 10-10-26 (1)'));
+    assert.ok(formulaReq, 'طلب المعادلة غير موجود');
+    if (formulaReq) {
+      const itm = formulaReq.items[0];
+      assert.equal(itm.line_total, 5000, 'المعادلة =L*K يجب أن تحسب كـ 10 * 500 = 5000');
+      assert.equal(itm.legacy_total, 5000, 'legacy_total للمعادلة يجب أن يكون القيمة المحسوبة 5000');
+    }
   });
 
   // -------------------------------------------------------------------------
-  // T-7.5: التحقق من توزيع الحالات على مستوى الطلب والمواد (SPEC §1.2)
+  // T-7.6: حظر استخدام مفتاح service_role في كود الاستيراد أو التطبيق
   // -------------------------------------------------------------------------
-  t('T-7.5', 'التحقق من توزيع الحالات: قيد الانتظار 48، تم التنفيذ 1، تريث 1، مرفوض 1', () => {
-    const dist = parsed.report.statusDistribution;
-    assert.equal(dist.pending, 48, 'عدد طلبات قيد الانتظار غير مطابق (المتوقع 48)');
-    assert.equal(dist.executed, 1, 'عدد طلبات تم التنفيذ غير مطابق (المتوقع 1)');
-    assert.equal(dist.on_hold, 1, 'عدد طلبات تريث غير مطابق (المتوقع 1)');
-    assert.equal(dist.rejected, 1, 'عدد طلبات الرفض غير مطابق (المتوقع 1)');
-
-    const itemDist = parsed.report.itemStatusDistribution;
-    assert.equal(itemDist.pending, 155, 'عدد مواد قيد الانتظار غير مطابق (المتوقع 155)');
-    assert.equal(itemDist.executed, 1, 'عدد مواد تم التنفيذ غير مطابق (المتوقع 1)');
-    assert.equal(itemDist.on_hold, 1, 'عدد مواد تريث غير مطابق (المتوقع 1)');
-    assert.equal(itemDist.rejected, 1, 'عدد مواد الرفض غير مطابق (المتوقع 1)');
-  });
-
-  // -------------------------------------------------------------------------
-  // T-7.6: حظر استخدام مفتاح service_role في عملية الاستيراد أو كود التطبيق
-  // -------------------------------------------------------------------------
-  t('T-7.6', 'حظر استخدام مفتاح service_role في أداة الاستيراد أو كود التطبيق (قاعدة 8)', () => {
-    // التأكد من أن import-core لا يعتمد على أي مفتاح سري
+  t('T-7.6', 'حظر استخدام مفتاح service_role في كود الاستيراد أو التطبيق (قاعدة 8)', () => {
     assert.equal(typeof parseLegacyRows, 'function', 'دالة parseLegacyRows غير معرفة');
-    // حظر أي إشارة لـ service_role
-    assert.equal((process.env as any).SUPABASE_SERVICE_ROLE_KEY, undefined, 'ممنوع تواجد service_role في بيئة التشغيل');
+    assert.equal((process.env as any).SUPABASE_SERVICE_ROLE_KEY, undefined, 'ممنوع تواجد service_role');
   });
 }

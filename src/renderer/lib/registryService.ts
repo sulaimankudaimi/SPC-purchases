@@ -16,7 +16,7 @@ import { platform } from './platform';
 import { RequestStatus, STATUS_ARABIC_LABELS } from '../../shared/schema';
 import { formatDateDDMMYYYY } from '../../shared/dates';
 import { parseLegacyRows } from '../../../scripts/import-core';
-import { generateLegacySampleRows } from '../../../scripts/fixtures/legacy-sample';
+import { generateLegacyExcelRows } from '../../../scripts/generate-legacy-excel';
 
 export interface RegistryItem {
   id: string;
@@ -58,6 +58,9 @@ export interface RegistryRequest {
   items: RegistryItem[];
   items_count?: number;
   total_amount?: number;
+  is_outbox?: boolean;
+  needs_sync?: boolean;
+  _isOfflineCached?: boolean;
 }
 
 export interface RegistryFilter {
@@ -110,7 +113,7 @@ async function getLocalStore(): Promise<{ requests: RegistryRequest[]; auditLogs
 
     // إذا كان التخزين المحلي فارغاً، نقوم بالتهيئة من العينة المعتمدة (51 طلباً و158 مادة)
     if (requests.length === 0) {
-      const legacyRows = generateLegacySampleRows();
+      const legacyRows = generateLegacyExcelRows();
       const parsed = parseLegacyRows(legacyRows);
       requests = parsed.requests.map((r, idx) => ({
         id: r.id || `req_legacy_${idx + 1}`,
@@ -214,6 +217,87 @@ async function saveLocalStore(requests: RegistryRequest[], auditLogs?: AuditLogE
   }
 }
 
+let isLastFetchOffline = false;
+
+/**
+ * هل السجل يعمل حالياً في وضع القراءة فقط من التخزين المؤقت دون اتصال
+ */
+export function isOfflineRegistry(): boolean {
+  return isLastFetchOffline;
+}
+
+/**
+ * هل الطلب مؤهل للتصدير النهائي لـ PDF (القرار D15: يُمنع التصدير النهائي قبل المزامنة)
+ */
+export function canExportFinalPdf(req: RegistryRequest): boolean {
+  if (req.is_outbox || req.needs_sync) return false;
+  if (req.code && (req.code.startsWith('مؤقت') || req.code.includes('بانتظار الرمز'))) return false;
+  return true;
+}
+
+/**
+ * دمج طلبات صندوق الصادر المعلّقة في السجل لتبدو مباشرة بوسم «بانتظار المزامنة»
+ */
+async function mergeOutboxRequests(list: RegistryRequest[]): Promise<RegistryRequest[]> {
+  try {
+    const queue = await platform.outbox.getQueue();
+    if (!queue || queue.length === 0) return list;
+
+    const outboxRequests: RegistryRequest[] = queue.map((item: any) => {
+      const items = (item.data?.items || []).map((itm: any, idx: number) => ({
+        id: `outbox_${item.id}_${idx + 1}`,
+        request_id: item.id,
+        line_no: itm.line_no || (idx + 1),
+        name: itm.name,
+        specs: itm.specs || null,
+        unit: itm.unit || null,
+        qty: Number(itm.qty || 0),
+        unit_price: Number(itm.unit_price || 0),
+        line_total: Number(itm.qty || 0) * Number(itm.unit_price || 0),
+        notes: itm.notes || null
+      }));
+
+      const totalAmount = items.reduce((sum: number, it: any) => sum + it.line_total, 0);
+
+      return {
+        id: item.id,
+        code: item.temp_code || `مؤقت (${item.id.slice(0, 6)})`,
+        code_norm: item.temp_code || `مؤقت (${item.id.slice(0, 6)})`,
+        request_date: item.data?.request_date || new Date().toISOString().substring(0, 10),
+        entity: item.data?.entity || '',
+        requester: item.data?.requester || '',
+        department: item.data?.department || null,
+        delivery_place: item.data?.delivery_place || null,
+        delivery_date: item.data?.delivery_date || null,
+        currency: item.data?.currency || 'ليرة سورية جديدة',
+        status: 'pending' as RequestStatus,
+        status_note: 'بانتظار المزامنة',
+        notes: item.data?.notes || null,
+        signatories: item.signatories || {},
+        pdf_local_path: null,
+        pdf_storage_path: null,
+        invoice_storage_path: null,
+        needs_review: false,
+        legacy_row: null,
+        created_at: item.enqueued_at || new Date().toISOString(),
+        updated_at: item.enqueued_at || new Date().toISOString(),
+        deleted_at: null,
+        items,
+        items_count: items.length,
+        total_amount: totalAmount,
+        is_outbox: true,
+        needs_sync: true
+      };
+    });
+
+    const existingIds = new Set(list.map((r) => r.id));
+    const newOutbox = outboxRequests.filter((r) => !existingIds.has(r.id));
+    return [...newOutbox, ...list];
+  } catch {
+    return list;
+  }
+}
+
 export const registryService = {
   /**
    * 1. جلب الطلبات مع الترتيب والبحث والتصفية (باستثناء المحذوفة ناعماً)
@@ -227,7 +311,7 @@ export const registryService = {
       const { requests } = await getLocalStore();
 
       // تصفية المحذوفة ناعماً (deleted_at != null)
-      let list = requests.filter((r) => r.deleted_at === null);
+      let list = requests.filter((r) => !r.deleted_at);
 
       // تصفية الحالة
       if (filter?.status && filter.status !== 'all') {
@@ -254,7 +338,7 @@ export const registryService = {
           const inCode = r.code.toLowerCase().includes(q);
           const inEntity = r.entity.toLowerCase().includes(q);
           const inRequester = r.requester.toLowerCase().includes(q);
-          const inItems = r.items.some((itm) => itm.name.toLowerCase().includes(q));
+          const inItems = (r.items || []).some((itm) => itm.name.toLowerCase().includes(q));
           return inCode || inEntity || inRequester || inItems;
         });
       }
@@ -267,15 +351,19 @@ export const registryService = {
         return b.code.localeCompare(a.code);
       });
 
-      // حساب عدد المواد والمجموع الكلي لكل طلب
-      return list.map((r) => {
-        const total = r.items.reduce((sum, itm) => sum + (itm.line_total || itm.qty * itm.unit_price), 0);
+      // حساب عدد المواد والمجموع الكلي لكل طلب ودمج عناصر الصندوق الصادر المعلّقة
+      const mapped = list.map((r) => {
+        const items = r.items || [];
+        const total = items.reduce((sum, itm) => sum + (itm.line_total || itm.qty * itm.unit_price), 0);
         return {
           ...r,
-          items_count: r.items.length,
+          items,
+          items_count: items.length,
           total_amount: total
         };
       });
+
+      return await mergeOutboxRequests(mapped);
     }
 
     // التنفيذ الفعلي عبر Supabase عند وجود الاتصال
@@ -350,10 +438,59 @@ export const registryService = {
         });
       }
 
-      return results;
+      // حفظ النتيجة بنجاح في التخزين المؤقت لتمكين القراءة دون اتصال (المرحلة 9)
+      if (!filter?.search && (!filter?.status || filter.status === 'all') && !filter?.fromDate && !filter?.toDate && !filter?.needsReviewOnly) {
+        platform.session.set('spc_cache_registry', JSON.stringify({
+          cached_at: new Date().toISOString(),
+          requests: results
+        })).catch(() => {});
+      }
+
+      isLastFetchOffline = false;
+      return await mergeOutboxRequests(results);
     } catch (err: any) {
-      console.warn('فشل جلب السجل من Supabase، استخدام البيانات المحلية:', err);
-      return this.fetchRequests({ ...filter });
+      console.warn('فشل جلب السجل من Supabase، استخدام التخزين المؤقت للقراءة دون اتصال:', err);
+      isLastFetchOffline = true;
+
+      // محاولة قراءة آخر نسخة مخزنة مؤقتاً
+      try {
+        const cachedRaw = await platform.session.get('spc_cache_registry');
+        if (cachedRaw) {
+          const parsed = JSON.parse(cachedRaw);
+          if (parsed && Array.isArray(parsed.requests)) {
+            let list: RegistryRequest[] = parsed.requests.map((r: any) => ({ ...r, _isOfflineCached: true }));
+            if (filter?.status && filter.status !== 'all') {
+              list = list.filter((r) => r.status === filter.status);
+            }
+            if (filter?.needsReviewOnly) {
+              list = list.filter((r) => r.needs_review === true);
+            }
+            if (filter?.fromDate) {
+              list = list.filter((r) => r.request_date >= filter.fromDate!);
+            }
+            if (filter?.toDate) {
+              list = list.filter((r) => r.request_date <= filter.toDate!);
+            }
+            if (filter?.search && filter.search.trim() !== '') {
+              const q = filter.search.trim().toLowerCase();
+              list = list.filter((r) => {
+                const inCode = r.code.toLowerCase().includes(q);
+                const inEntity = r.entity.toLowerCase().includes(q);
+                const inRequester = r.requester.toLowerCase().includes(q);
+                const inItems = r.items.some((itm) => itm.name.toLowerCase().includes(q));
+                return inCode || inEntity || inRequester || inItems;
+              });
+            }
+            return await mergeOutboxRequests(list);
+          }
+        }
+      } catch {
+        // fallback to local demo store
+      }
+
+      const { requests } = await getLocalStore();
+      const demoList = requests.map((r) => ({ ...r, _isOfflineCached: true }));
+      return await mergeOutboxRequests(demoList);
     }
   },
 

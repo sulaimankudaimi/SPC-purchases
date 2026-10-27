@@ -80,3 +80,14 @@ export function isValidStandardCode(code: string): boolean {
   // صيغة قياسية: spc ثم مسافة ثم يوم (1-2 رقم) ثم شرطة ثم شهر (1-2 رقم) ثم شرطة ثم سنة (رقمين) ثم مسافة ثم (رقم)
   return /^spc\s+\d{1,2}-\d{1,2}-\d{2}\s+\(\d+\)$/i.test(code.trim());
 }
+
+/**
+ * استخراج التاريخ بصيغة ISO (YYYY-MM-DD) من رمز الطلب (spc D-M-YY (n))
+ */
+export function extractDateFromCode(code: string): string | null {
+  const p = parseCode(code);
+  if (!p) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${p.fullYear}-${pad(p.month)}-${pad(p.day)}`;
+}
+

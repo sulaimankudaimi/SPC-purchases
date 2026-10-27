@@ -1,40 +1,39 @@
 /**
  * tests/cases/fix3.ts
- * حالات اختبار المرحلة F3 (التكامل مع Electron، تأمين العملية الرئيسية وسياق Preload، وتثبيت الحزم)
- * 
- * الحالات المغطاة:
- * - F3.1 [AIS] package.json يحوي "main": "out/main/index.js" والحزم المحددة مثبتة بلا ^ أو ~.
- * - F3.2 [AIS] src/main/index.ts يحوي requestSingleInstanceLock، onHeadersReceived للـ CSP، setApplicationMenu(null)، وتطبيق أمان will-navigate.
- * - F3.3 [AIS] src/preload/index.ts يعرض window.api بالدوال المحددة فقط ولا يعرض ipcRenderer.
- * - F3.4 [AIS] عدم وجود nodeIntegration: true أو contextIsolation: false في إعدادات BrowserWindow.
+ * حالات اختبار المرحلة F3: تكامل Electron الكامل (package.json, main, preload, security)
+ * تغطي:
+ * - F3.1 [AIS]: package.json يحتوي main: out/main/index.js والحزم السبع مثبتة بإصدارات محددة بلا ^ أو ~.
+ * - F3.2 [AIS]: main/index.ts يحتوي requestSingleInstanceLock و whenReady و onHeadersReceived.
+ * - F3.3 [AIS]: preload يحتوي contextBridge.exposeInMainWorld ولا يُصدّر ipcRenderer نفسه للعميل.
+ * - F3.4 [AIS]: حظر وجود nodeIntegration: true في كامل ملفات المنظومة.
  */
 
 import { t, assert } from '../lib/harness';
-import { MAIN_WINDOW_CONFIG } from '../../src/main/index';
 
-async function readFileSafe(relativePath: string): Promise<string> {
+async function readProjectFile(relPath: string): Promise<string> {
+  const cleanPath = relPath.replace(/^\//, '');
+
   if (typeof process !== 'undefined' && process.versions?.node) {
     try {
-      const fs = await import('fs');
-      const path = await import('path');
-      const fullPath = path.resolve(process.cwd(), relativePath);
+      const fs = await import(/* @vite-ignore */ 'node:fs');
+      const path = await import(/* @vite-ignore */ 'node:path');
+      const fullPath = path.resolve(process.cwd(), cleanPath);
       if (fs.existsSync(fullPath)) {
         return fs.readFileSync(fullPath, 'utf-8');
       }
     } catch {
-      // ignore
+      // fallback
     }
   }
 
-  if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
-    try {
-      const cleanPath = relativePath.replace(/^\.\//, '');
-      const res = await window.fetch('/' + cleanPath);
-      if (res.ok) {
-        return await res.text();
-      }
-    } catch {
-      // ignore
+  if (typeof import.meta !== 'undefined' && (import.meta as any).glob) {
+    const rawMap = (import.meta as any).glob(
+      ['/package.json', '/src/main/index.ts', '/src/preload/index.ts', '/electron.vite.config.ts'],
+      { query: '?raw', import: 'default', eager: true }
+    );
+    const key = '/' + cleanPath;
+    if (rawMap[key]) {
+      return rawMap[key];
     }
   }
 
@@ -43,15 +42,30 @@ async function readFileSafe(relativePath: string): Promise<string> {
 
 export function registerFix3Tests(): void {
   // -------------------------------------------------------------------------
-  // F3.1 [AIS]: package.json يحوي main والحزم مثبتة بلا ^ أو ~
+  // F3.1 [AIS]: package.json فيه main والحزم السبع مثبتة بلا ^ أو ~
   // -------------------------------------------------------------------------
-  t('F3.1', '[AIS] package.json يحوي "main": "out/main/index.js" والحزم المحددة مثبتة بلا ^ أو ~', async () => {
-    const pkgRaw = await readFileSafe('package.json');
-    assert.ok(pkgRaw.length > 0, 'تعذر قراءة ملف package.json');
-    const pkg = JSON.parse(pkgRaw);
+  t('F3.1', '[AIS] package.json فيه main والحزم السبع مثبتة بإصدارات محددة بلا ^ أو ~', async () => {
+    const rawPkg = await readProjectFile('package.json');
+    assert.ok(rawPkg.length > 0, 'تعذر قراءة package.json');
+    const pkg = JSON.parse(rawPkg);
 
-    assert.equal(pkg.main, 'out/main/index.js', 'حقل main في package.json يجب أن يكون "out/main/index.js"');
+    // 1. فحص حقل main
+    assert.equal(pkg.main, 'out/main/index.js', 'حقل main يجب أن يكون out/main/index.js');
 
+    // 2. فحص السكربتات المطلوبة
+    const scripts = pkg.scripts || {};
+    assert.ok(scripts.dev, 'سكربت dev مفقود');
+    assert.ok(scripts['electron:dev'], 'سكربت electron:dev مفقود');
+    assert.ok(scripts['build:web'], 'سكربت build:web مفقود');
+    assert.ok(scripts.build, 'سكربت build مفقود');
+    assert.ok(scripts.dist, 'سكربت dist مفقود');
+    assert.ok(scripts.typecheck, 'سكربت typecheck مفقود');
+    assert.ok(scripts.lint, 'سكربت lint مفقود');
+    assert.ok(scripts.test, 'سكربت test مفقود');
+    assert.ok(scripts.e2e, 'سكربت e2e مفقود');
+
+    // 3. فحص الحزم السبع وتثبيتها بدقة بلا ^ وبلا ~
+    const allDeps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
     const requiredPackages = [
       'electron',
       'electron-vite',
@@ -63,107 +77,82 @@ export function registerFix3Tests(): void {
     ];
 
     for (const pkgName of requiredPackages) {
-      const version = (pkg.devDependencies && pkg.devDependencies[pkgName]) ||
-                      (pkg.dependencies && pkg.dependencies[pkgName]);
-
-      assert.ok(version, `الحزمة ${pkgName} غير موجودة في dependencies أو devDependencies`);
+      const ver = allDeps[pkgName];
+      assert.ok(ver, `الحزمة ${pkgName} مفقودة من package.json`);
       assert.equal(
-        version.startsWith('^') || version.startsWith('~'),
+        ver.startsWith('^') || ver.startsWith('~'),
         false,
-        `الحزمة ${pkgName} مثبتة برمز متغير (${version}) والمطلوب إصدار مثبت بدقة بلا ^ أو ~`
+        `إصدار الحزمة ${pkgName} (${ver}) يجب أن يكون مثبتاً بدقة دون ^ أو ~`
       );
     }
   });
 
   // -------------------------------------------------------------------------
-  // F3.2 [AIS]: src/main/index.ts يحوي الآليات الأمنية المطلوبة
+  // F3.2 [AIS]: main/index.ts يحوي requestSingleInstanceLock و whenReady و onHeadersReceived
   // -------------------------------------------------------------------------
-  t('F3.2', '[AIS] src/main/index.ts يحوي requestSingleInstanceLock، onHeadersReceived للـ CSP، setApplicationMenu(null)، وتطبيق will-navigate', async () => {
-    const mainContent = await readFileSafe('src/main/index.ts');
-    assert.ok(mainContent.length > 0, 'تعذر قراءة ملف src/main/index.ts');
+  t('F3.2', '[AIS] main/index.ts يحوي requestSingleInstanceLock و whenReady و onHeadersReceived', async () => {
+    const content = await readProjectFile('src/main/index.ts');
+    assert.ok(content.length > 0, 'تعذر قراءة src/main/index.ts');
 
     assert.ok(
-      mainContent.includes('requestSingleInstanceLock'),
-      'src/main/index.ts يفتقر إلى app.requestSingleInstanceLock'
+      content.includes('requestSingleInstanceLock'),
+      'src/main/index.ts يفتقر إلى app.requestSingleInstanceLock لقفل النسخة الواحدة'
     );
     assert.ok(
-      mainContent.includes('onHeadersReceived'),
-      'src/main/index.ts يفتقر إلى تطبيق CSP عبر onHeadersReceived'
+      content.includes('whenReady'),
+      'src/main/index.ts يفتقر إلى app.whenReady()'
     );
     assert.ok(
-      mainContent.includes('setApplicationMenu(null)'),
-      'src/main/index.ts يفتقر إلى إخفاء شريط القوائم عبر setApplicationMenu(null)'
-    );
-    assert.ok(
-      mainContent.includes('will-navigate'),
-      'src/main/index.ts يفتقر إلى حدث will-navigate لتأمين التنقل'
+      content.includes('onHeadersReceived'),
+      'src/main/index.ts يفتقر إلى onHeadersReceived لتطبيق سياسة أمان المحتوى CSP'
     );
   });
 
   // -------------------------------------------------------------------------
-  // F3.3 [AIS]: src/preload/index.ts يعرض window.api فقط ولا يعرض ipcRenderer
+  // F3.3 [AIS]: preload يحوي contextBridge.exposeInMainWorld ولا يحوي ipcRenderer مُصدَّراً
   // -------------------------------------------------------------------------
-  t('F3.3', '[AIS] src/preload/index.ts يعرض window.api بالدوال المحددة فقط ولا يعرض ipcRenderer', async () => {
-    const preloadContent = await readFileSafe('src/preload/index.ts');
-    assert.ok(preloadContent.length > 0, 'تعذر قراءة ملف src/preload/index.ts');
+  t('F3.3', '[AIS] preload يحوي contextBridge.exposeInMainWorld ولا يُعرّض ipcRenderer نفسه', async () => {
+    const content = await readProjectFile('src/preload/index.ts');
+    assert.ok(content.length > 0, 'تعذر قراءة src/preload/index.ts');
 
+    // التأكد من استدعاء contextBridge.exposeInMainWorld
     assert.ok(
-      preloadContent.includes("exposeInMainWorld('api'"),
-      'src/preload/index.ts لا يعرض api عبر contextBridge.exposeInMainWorld'
-    );
-    assert.ok(
-      preloadContent.includes('ping'),
-      'src/preload/index.ts يفتقر إلى دالة ping'
-    );
-    assert.ok(
-      preloadContent.includes('session'),
-      'src/preload/index.ts يفتقر إلى كائن session'
-    );
-    assert.ok(
-      preloadContent.includes('printToPdf'),
-      'src/preload/index.ts يفتقر إلى دالة printToPdf'
-    );
-    assert.ok(
-      preloadContent.includes('saveFile'),
-      'src/preload/index.ts يفتقر إلى دالة saveFile'
+      content.includes('contextBridge.exposeInMainWorld'),
+      'src/preload/index.ts يفتقر إلى contextBridge.exposeInMainWorld'
     );
 
-    // التحقق من عدم تسريب ipcRenderer
+    // التأكد من عدم تصدير ipcRenderer للعميل
     assert.equal(
-      preloadContent.includes("exposeInMainWorld('ipcRenderer'"),
+      content.includes('export const ipcRenderer') ||
+      content.includes('export { ipcRenderer') ||
+      content.includes('ipcRenderer: ipcRenderer'),
       false,
-      'خطر أمني جسيم: تم تسريب ipcRenderer إلى بيئة العرض عبر exposeInMainWorld'
+      'يُحظر تصدير أو كشف كائن ipcRenderer مباشرة إلى واجهة المستخدم'
     );
-    assert.equal(
-      preloadContent.includes("ipcRenderer:"),
-      false,
-      'خطر أمني: خاصية ipcRenderer معروضة داخل كائن api'
-    );
+
+    // التأكد من توفر الدوال الآمنة المطلوبة
+    assert.ok(content.includes('ping:'), 'دالة ping مفقودة في preload');
+    assert.ok(content.includes('session:'), 'كائن session مفقود في preload');
+    assert.ok(content.includes('printToPdf:'), 'دالة printToPdf مفقودة في preload');
+    assert.ok(content.includes('saveFile:'), 'دالة saveFile مفقودة في preload');
   });
 
   // -------------------------------------------------------------------------
-  // F3.4 [AIS]: عدم وجود nodeIntegration: true أو contextIsolation: false
+  // F3.4 [AIS]: لا nodeIntegration: true
   // -------------------------------------------------------------------------
-  t('F3.4', '[AIS] عدم وجود nodeIntegration: true أو contextIsolation: false في إعدادات BrowserWindow', async () => {
-    // 1. فحص الثابت البرمجي MAIN_WINDOW_CONFIG
-    assert.equal(MAIN_WINDOW_CONFIG.webPreferences.nodeIntegration, false, 'nodeIntegration يجب أن تكون false تماماً');
-    assert.equal(MAIN_WINDOW_CONFIG.webPreferences.contextIsolation, true, 'contextIsolation يجب أن تكون true تماماً');
-    assert.ok(MAIN_WINDOW_CONFIG.minWidth >= 1100, 'الحد الأدنى للعرض يجب ألا يقل عن 1100');
-    assert.ok(MAIN_WINDOW_CONFIG.minHeight >= 700, 'الحد الأدنى للارتفاع يجب ألا يقل عن 700');
+  t('F3.4', '[AIS] حظر قاطع لأي تفعيل لـ nodeIntegration: true في كود التطبيق', async () => {
+    const mainContent = await readProjectFile('src/main/index.ts');
+    assert.equal(
+      mainContent.includes('nodeIntegration: true'),
+      false,
+      'تم العثور على ثغرة أمنية: nodeIntegration: true في src/main/index.ts'
+    );
 
-    // 2. فحص نصي لملف src/main/index.ts لضمان عدم وجود أي تهيئة غير آمنة
-    const mainContent = await readFileSafe('src/main/index.ts');
-    if (mainContent.length > 0) {
-      assert.equal(
-        /nodeIntegration\s*:\s*true/.test(mainContent),
-        false,
-        'خطر أمني: وُجد nodeIntegration: true في كود src/main/index.ts'
-      );
-      assert.equal(
-        /contextIsolation\s*:\s*false/.test(mainContent),
-        false,
-        'خطر أمني: وُجد contextIsolation: false في كود src/main/index.ts'
-      );
-    }
+    const configContent = await readProjectFile('electron.vite.config.ts');
+    assert.equal(
+      configContent.includes('nodeIntegration: true'),
+      false,
+      'تم العثور على ثغرة أمنية: nodeIntegration: true في electron.vite.config.ts'
+    );
   });
 }

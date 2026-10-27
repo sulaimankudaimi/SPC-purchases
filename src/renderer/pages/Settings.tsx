@@ -14,7 +14,12 @@ import {
   UserCheck, 
   FileSignature, 
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle,
+  Download,
+  Database,
+  Clock,
+  FileSpreadsheet,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   getSettings, 
@@ -22,11 +27,17 @@ import {
   AppSettings, 
   DEFAULT_SETTINGS 
 } from '../lib/settings';
+import { registryService, exportRegistryToExcel } from '../lib/registryService';
+import { getLookups } from '../lib/lookups';
+import { platform } from '../lib/platform';
 
 export default function Settings() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const [lastBackupDate, setLastBackupDate] = useState<string | null>(null);
+  const [isBackupDue, setIsBackupDue] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
@@ -37,10 +48,77 @@ export default function Settings() {
         setLoading(false);
       }
     });
+
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const rawDate = window.localStorage.getItem('spc_last_backup_date');
+        if (rawDate) {
+          setLastBackupDate(rawDate);
+          const diffDays = (Date.now() - new Date(rawDate).getTime()) / (1000 * 60 * 60 * 24);
+          if (diffDays > 7) {
+            setIsBackupDue(true);
+          }
+        } else {
+          setIsBackupDue(true);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     return () => {
       mounted = false;
     };
   }, []);
+
+  const handleBackupNow = async () => {
+    setBackingUp(true);
+    setFeedback(null);
+    try {
+      const allRequests = await registryService.fetchRequests();
+      const currentSettings = await getSettings();
+      const currentLookups = await getLookups();
+      const allItems = allRequests.flatMap((r) => r.items);
+
+      const now = new Date();
+      const dateStr = now.toISOString().substring(0, 10);
+
+      // 1. تصدير JSON كامل (الطلبات، المواد، الإعدادات، القوائم)
+      const backupJson = {
+        version: 1,
+        exported_at: now.toISOString(),
+        database: 'supabase',
+        requests: allRequests,
+        request_items: allItems,
+        settings: currentSettings,
+        lookups: currentLookups
+      };
+      const jsonFilename = `spc_backup_${dateStr}.json`;
+      await platform.file.saveFile(jsonFilename, JSON.stringify(backupJson, null, 2), 'application/json');
+
+      // 2. تصدير Excel كامل مطابق للسجل (17 عموداً)
+      const excelBlob = exportRegistryToExcel(allRequests);
+      const excelFilename = `spc_backup_${dateStr}.xlsx`;
+      await platform.file.saveFile(excelFilename, excelBlob, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+      // حفظ تاريخ آخر نسخة
+      const isoNow = now.toISOString();
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem('spc_last_backup_date', isoNow);
+      }
+      setLastBackupDate(isoNow);
+      setIsBackupDue(false);
+
+      setFeedback({
+        type: 'success',
+        message: `تم إنشاء وتصدير النسخة الاحتياطية بنجاح (${allRequests.length} طلباً و${allItems.length} مادة) بصيغتي JSON و Excel.`
+      });
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: 'فشل تصدير النسخة الاحتياطية: ' + (err?.message || 'خطأ غير معروف') });
+    } finally {
+      setBackingUp(false);
+    }
+  };
 
   const handleSignatoryChange = (key: keyof AppSettings['signatories'], value: string) => {
     setSettings((prev) => ({
@@ -115,6 +193,27 @@ export default function Settings() {
           <span>استعادة الافتراضي</span>
         </button>
       </div>
+
+      {/* تنبيه أسبوعي بالنسخ الاحتياطي */}
+      {isBackupDue && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 flex items-center justify-between gap-3 text-xs shadow-2xs">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <span className="font-bold text-sm block">تذكير أسبوعي بالنسخ الاحتياطي</span>
+              <span>مضى أكثر من 7 أيام على آخر نسخة احتياطية (أو لم تُؤخذ نسخة بعد). يُرجى أخذ نسخة احتياطية لحماية البيانات.</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleBackupNow}
+            disabled={backingUp}
+            className="px-3.5 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-semibold rounded-lg shrink-0 cursor-pointer transition shadow-xs"
+          >
+            {backingUp ? 'جاري التجهيز...' : 'نسخة احتياطية الآن'}
+          </button>
+        </div>
+      )}
 
       {/* رسالة النجاح أو الخطأ */}
       {feedback && (
@@ -336,6 +435,57 @@ export default function Settings() {
             <span className="text-[11px] text-slate-400 block">
               «ليرة سورية جديدة» في الاستمارة والـ PDF، و«ل.س» في شاشات التطبيق
             </span>
+          </div>
+        </div>
+
+        {/* 4. النسخ الاحتياطي وخمول الخطة المجانية (المرحلة 9) */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4 shadow-2xs">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 text-[#0F4C5C]">
+            <div className="flex items-center gap-2.5">
+              <Database className="w-5 h-5" />
+              <h3 className="font-bold text-base text-slate-900">النسخ الاحتياطي وحماية البيانات (المرحلة 9)</h3>
+            </div>
+
+            {lastBackupDate && (
+              <div className="text-xs text-slate-500 flex items-center gap-1 font-mono">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>آخر نسخة: {new Date(lastBackupDate).toLocaleDateString('ar-SY')} {new Date(lastBackupDate).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            )}
+          </div>
+
+          {/* ملاحظة خمول الخطة المجانية */}
+          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1.5 text-xs">
+            <div className="flex items-center gap-2 font-bold text-sm text-amber-950">
+              <AlertTriangle className="w-4.5 h-4.5 text-amber-700 shrink-0" />
+              <span>ملاحظة أمان: خمول الخطة المجانية في Supabase</span>
+            </div>
+            <p className="leading-relaxed">
+              تتوقف مشاريع Supabase المجانية تلقائياً عن العمل بعد 7 أيام من انقطاع النشاط. تُعد النسخ الاحتياطية الدورية شبكة الأمان الأساسية لحماية كامل البيانات (الطلبات، المواد، الإعدادات، والقوائم). يُنصح بأخذ نسخة احتياطية أسبوعية وتصديرها محلياً.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">تصدير نسخة احتياطية كاملة الآن</h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                تصدير كافة الطلبات والمواد والإعدادات والقوائم المرجعية إلى ملفين: JSON كامل و مصنف Excel (17 عموداً).
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleBackupNow}
+              disabled={backingUp}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs rounded-xl transition shadow-xs disabled:opacity-60 cursor-pointer shrink-0"
+            >
+              {backingUp ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              <span>{backingUp ? 'جاري تجهيز النسخة...' : 'نسخة احتياطية الآن'}</span>
+            </button>
           </div>
         </div>
 

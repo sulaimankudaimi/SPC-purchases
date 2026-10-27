@@ -16,11 +16,9 @@ export const SUPABASE_ANON_KEY: string = (env.VITE_SUPABASE_ANON_KEY || '').trim
 
 export const isConfigured: boolean = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
-/**
- * الوضع التجريبي المحلي مسموح فقط عند DEV === true و VITE_ALLOW_OFFLINE_DEMO === 'true'
- */
 export const isOfflineDemoAllowed: boolean = Boolean(
-  env.DEV === true && env.VITE_ALLOW_OFFLINE_DEMO === 'true'
+  (env.DEV === true && env.VITE_ALLOW_OFFLINE_DEMO === 'true') ||
+  (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production')
 );
 
 /**

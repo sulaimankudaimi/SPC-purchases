@@ -85,9 +85,18 @@ export interface ImportReport {
   rejectedRows: Array<{ rowNum: number; reason: string; data?: any }>;
 }
 
+export interface ImportLookups {
+  entities: string[];
+  requesters: string[];
+  departments: string[];
+  deliveryPlaces: string[];
+  units: string[];
+}
+
 export interface ImportResult {
   requests: ProcessedRequest[];
   items: ProcessedRequestItem[];
+  lookups: ImportLookups;
   report: ImportReport;
 }
 
@@ -115,6 +124,7 @@ export function parseLegacyRows(rawRows: any[][]): ImportResult {
   const entitySet = new Set<string>();
   const requesterSet = new Set<string>();
   const departmentSet = new Set<string>();
+  const deliveryPlaceSet = new Set<string>();
 
   const itemStatusCounts = { pending: 0, executed: 0, on_hold: 0, rejected: 0, cancelled: 0 };
   const reqStatusCounts = { pending: 0, executed: 0, on_hold: 0, rejected: 0, cancelled: 0 };
@@ -186,6 +196,7 @@ export function parseLegacyRows(rawRows: any[][]): ImportResult {
       entitySet.add(cleanEntity);
       requesterSet.add(cleanRequester);
       if (cleanDept) departmentSet.add(cleanDept);
+      if (cleanDelivery) deliveryPlaceSet.add(cleanDelivery);
 
       const reqId = `req-legacy-${reqSeqCounter}`;
 
@@ -337,7 +348,15 @@ export function parseLegacyRows(rawRows: any[][]): ImportResult {
     rejectedRows
   };
 
-  return { requests, items: allItems, report };
+  const lookups: ImportLookups = {
+    entities: Array.from(entitySet),
+    requesters: Array.from(requesterSet),
+    departments: Array.from(departmentSet),
+    deliveryPlaces: Array.from(deliveryPlaceSet),
+    units: Array.from(uniqueUnitsSet)
+  };
+
+  return { requests, items: allItems, lookups, report };
 }
 
 /**

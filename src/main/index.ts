@@ -1,31 +1,33 @@
 /**
  * src/main/index.ts
  * العملية الرئيسية الحقيقية لتطبيق Electron (منظومة المشتريات)
- * - قفل النسخة الواحدة app.requestSingleInstanceLock (D1)
- * - نافذة آمنة بأبعاد دنيا 1100×700 وإخفاء القائمة (D1)
- * - تطبيق CSP فعلياً عبر session.webRequest.onHeadersReceived
- * - حظر DevTools وشريط القوائم في الإنتاج
- * - حظر فتح نوافذ جديدة وحصر will-navigate في المحلي أثناء التطوير فقط
- * - قناة PDF لاستقبال البيانات وحفظ الاستمارة في Documents\ارشيف spc\<الرمز>.pdf (D2, D10)
- * - قنوات SafeStorage لتشفير الجلسة في userData
+ * - حصر التشغيل بنسخة واحدة عبر app.requestSingleInstanceLock (النسخة الثانية تُظهر الأولى وتخرج)
+ * - app.whenReady ثم إنشاء BrowserWindow بالإعدادات الحالية (حد أدنى 1100×700، إخفاء القائمة)
+ * - تحميل الواجهة (dev: ELECTRON_RENDERER_URL أو localhost:3000، prod: loadFile)
+ * - setupSecureWindow لمنع النوافذ المنبثقة وحظر will-navigate إلا للعنوان المحلي للتطوير خارج الإنتاج
+ * - تطبيق سياسة أمان المحتوى CSP فعلياً عبر session.defaultSession.webRequest.onHeadersReceived
+ * - تعطيل DevTools وقائمة التطبيق في الإنتاج
+ * - تسجيل قنوات IPC: ping، التخزين الآمن safeStorage في userData، حفظ الملفات، وقناة printToPDF
  */
 
-import * as electronModule from 'electron';
-import path from 'node:path';
 import fs from 'node:fs';
+import path from 'node:path';
 
-const electron: any = (electronModule as any).app
-  ? electronModule
-  : (electronModule as any).default && typeof (electronModule as any).default === 'object'
-  ? (electronModule as any).default
-  : {};
+// تحميل وحدة electron بأمان في بيئة Electron الحقيقية، مع تفادي الانهيار في بيئات الفحص المجردة
+let electron: any = {};
+try {
+  const { createRequire } = await import('node:module');
+  electron = createRequire(import.meta.url)('electron');
+} catch {
+  // في بيئات الاختبار بدون حزمة electron
+}
 
-export const app = electron.app;
-export const BrowserWindow = electron.BrowserWindow;
-export const ipcMain = electron.ipcMain;
-export const session = electron.session;
-export const Menu = electron.Menu;
-export const safeStorage = electron.safeStorage;
+const app = electron.app;
+const BrowserWindow = electron.BrowserWindow;
+const ipcMain = electron.ipcMain;
+const session = electron.session;
+const Menu = electron.Menu;
+const safeStorage = electron.safeStorage;
 
 export interface WindowOptions {
   width: number;
@@ -61,155 +63,64 @@ export const MAIN_WINDOW_CONFIG: WindowOptions = {
 let mainWindow: any = null;
 
 /**
- * دالة تهيئة نافذة Electron الآمنة وحمايتها من التنقل والنوافذ المنبثقة
+ * دالة تهيئة نافذة Electron الآمنة
  */
-export function setupSecureWindow(targetWindow: any): void {
-  if (!targetWindow || !targetWindow.webContents) return;
+export function setupSecureWindow(win: any): void {
+  if (!win) return;
 
   // منع فتح نوافذ جديدة
-  targetWindow.webContents.setWindowOpenHandler(() => {
-    return { action: 'deny' };
-  });
+  if (win.webContents?.setWindowOpenHandler) {
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  }
 
-  // تقييد will-navigate: السماح فقط بالمصدر المحلي للتطوير خارج الإنتاج، وملفات file: في الإنتاج
-  targetWindow.webContents.on('will-navigate', (event: any, navigationUrl: string) => {
-    try {
-      const parsedUrl = new URL(navigationUrl);
-      const isDev = app ? (!app.isPackaged && process.env.NODE_ENV !== 'production') : true;
-      if (isDev && (parsedUrl.origin === 'http://localhost:3000' || parsedUrl.origin === 'http://localhost:5173')) {
-        return;
+  // منع التنقل الخارجي إلا للعنوان المحلي للتطوير خارج الإنتاج
+  if (win.webContents?.on) {
+    win.webContents.on('will-navigate', (event: any, navigationUrl: string) => {
+      try {
+        const isDev = !app?.isPackaged && Boolean(process.env.ELECTRON_RENDERER_URL || process.env.VITE_DEV_SERVER_URL);
+        const parsedUrl = new URL(navigationUrl);
+        const isAllowedDev = isDev && (
+          parsedUrl.origin === 'http://localhost:3000' ||
+          parsedUrl.origin === 'http://127.0.0.1:3000' ||
+          parsedUrl.origin === 'http://localhost:5173'
+        );
+        const isAllowedFile = parsedUrl.protocol === 'file:';
+
+        if (!isAllowedDev && !isAllowedFile) {
+          event.preventDefault();
+        }
+      } catch {
+        event.preventDefault();
       }
-      if (parsedUrl.protocol === 'file:') {
-        return;
-      }
-      event.preventDefault();
-    } catch {
-      event.preventDefault();
-    }
-  });
-}
-
-/**
- * إعداد قنوات SafeStorage لتخزين واسترجاع الجلسة المشفرة في userData
- */
-export function setupSessionIpcHandlers(
-  targetIpc: any,
-  targetApp: any,
-  targetSafeStorage: any,
-  targetFs: typeof fs,
-  targetPath: typeof path
-): void {
-  if (!targetIpc) return;
-
-  const getStorePath = () => {
-    const userDir = targetApp?.getPath ? targetApp.getPath('userData') : (process.env.USERPROFILE || process.env.HOME || '.');
-    return targetPath.join(userDir, 'spc_session.enc');
-  };
-
-  const readStore = (): Record<string, string> => {
-    try {
-      const p = getStorePath();
-      if (!targetFs.existsSync(p)) return {};
-      const raw = targetFs.readFileSync(p);
-      if (targetSafeStorage && targetSafeStorage.isEncryptionAvailable && targetSafeStorage.isEncryptionAvailable()) {
-        const decrypted = targetSafeStorage.decryptString(raw);
-        return JSON.parse(decrypted);
-      } else {
-        return JSON.parse(raw.toString('utf8'));
-      }
-    } catch {
-      return {};
-    }
-  };
-
-  const writeStore = (data: Record<string, string>) => {
-    try {
-      const p = getStorePath();
-      const jsonStr = JSON.stringify(data);
-      if (targetSafeStorage && targetSafeStorage.isEncryptionAvailable && targetSafeStorage.isEncryptionAvailable()) {
-        const encrypted = targetSafeStorage.encryptString(jsonStr);
-        targetFs.writeFileSync(p, encrypted);
-      } else {
-        targetFs.writeFileSync(p, Buffer.from(jsonStr, 'utf8'));
-      }
-    } catch (err) {
-      console.error('Failed to write encrypted session store:', err);
-    }
-  };
-
-  targetIpc.handle('session:get', async (_event: any, key: string) => {
-    const store = readStore();
-    return store[key] ?? null;
-  });
-
-  targetIpc.handle('session:set', async (_event: any, key: string, value: string) => {
-    const store = readStore();
-    store[key] = value;
-    writeStore(store);
-    return true;
-  });
-
-  targetIpc.handle('session:remove', async (_event: any, key: string) => {
-    const store = readStore();
-    delete store[key];
-    writeStore(store);
-    return true;
-  });
-
-  targetIpc.handle('api:ping', async () => 'pong');
-
-  targetIpc.handle('file:save', async (_event: any, payload: { name: string; data: any }) => {
-    try {
-      const { name, data } = payload;
-      const homeDir = targetApp?.getPath ? targetApp.getPath('documents') : (process.env.USERPROFILE || process.env.HOME || '');
-      const targetDir = targetPath.join(homeDir, 'ارشيف spc');
-      if (!targetFs.existsSync(targetDir)) {
-        targetFs.mkdirSync(targetDir, { recursive: true });
-      }
-      const targetFilePath = targetPath.join(targetDir, name);
-      const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-      targetFs.writeFileSync(targetFilePath, buffer);
-      return { success: true, path: targetFilePath };
-    } catch (err: any) {
-      return { success: false, error: err?.message };
-    }
-  });
+    });
+  }
 }
 
 /**
  * إعداد قناة IPC الموحّدة لتوليد وحفظ PDF عبر نافذة خفية و printToPDF (القرار D2 و D10)
- * القناة: 'spc:print-to-pdf'
  */
-export function setupPdfIpcHandler(
-  targetIpc: any,
-  targetApp: any,
-  TargetBrowserWindow: any,
-  targetFs: typeof fs,
-  targetPath: typeof path
-): void {
-  if (!targetIpc) return;
+export function setupPdfIpcHandler(ipc: any, electronApp: any, WindowClass: any, fileSystem: any, pathModule: any): void {
+  if (!ipc) return;
 
-  targetIpc.handle('spc:print-to-pdf', async (_event: any, payload: { code: string; html: string; archiveDir?: string }) => {
+  ipc.handle('spc:print-to-pdf', async (_event: any, payload: { code: string; html: string; archiveDir?: string }) => {
     const { code, html, archiveDir } = payload;
     if (!code || !html) {
       throw new Error('البيانات غير مكتملة لتوليد PDF.');
     }
 
-    // 1. تحديد مسار الحفظ المحلي الافتراضي: Documents\ارشيف spc\<الرمز>.pdf (D10)
-    const homeDir = targetApp?.getPath ? targetApp.getPath('documents') : (process.env.USERPROFILE || process.env.HOME || '');
-    const defaultArchiveDir = archiveDir || targetPath.join(homeDir, 'ارشيف spc');
+    const homeDir = electronApp ? electronApp.getPath('documents') : (process.env.USERPROFILE || process.env.HOME || '');
+    const defaultArchiveDir = archiveDir || pathModule.join(homeDir, 'ارشيف spc');
     
-    if (targetFs && !targetFs.existsSync(defaultArchiveDir)) {
-      targetFs.mkdirSync(defaultArchiveDir, { recursive: true });
+    if (fileSystem && !fileSystem.existsSync(defaultArchiveDir)) {
+      fileSystem.mkdirSync(defaultArchiveDir, { recursive: true });
     }
 
     const safeCodeFilename = `${code.replace(/[/\\?%*:|"<>]/g, '_')}.pdf`;
-    const targetFilePath = targetPath.join(defaultArchiveDir, safeCodeFilename);
+    const targetFilePath = pathModule.join(defaultArchiveDir, safeCodeFilename);
 
-    // 2. إنشاء نافذة خفية بالكامل دون عرض (Hidden BrowserWindow)
-    const printWindow = new TargetBrowserWindow({
+    const printWindow = new WindowClass({
       show: false,
-      width: 794,  // A4 pixels at 96 DPI
+      width: 794,
       height: 1123,
       webPreferences: {
         sandbox: true,
@@ -219,10 +130,8 @@ export function setupPdfIpcHandler(
     });
 
     try {
-      // 3. تحميل محتوى HTML المولّد
       await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 
-      // 4. استدعاء printToPDF بمقاس A4 عمودي وهوامش دقيقة (D2)
       const pdfBuffer = await printWindow.webContents.printToPDF({
         pageSize: 'A4',
         landscape: false,
@@ -235,9 +144,8 @@ export function setupPdfIpcHandler(
         }
       });
 
-      // 5. كتابة الملف على القرص
-      if (targetFs) {
-        targetFs.writeFileSync(targetFilePath, pdfBuffer);
+      if (fileSystem) {
+        fileSystem.writeFileSync(targetFilePath, pdfBuffer);
       }
 
       return {
@@ -247,7 +155,6 @@ export function setupPdfIpcHandler(
         sizeBytes: pdfBuffer.length
       };
     } finally {
-      // إغلاق النافذة الخفية فور الانتهاء
       if (!printWindow.isDestroyed()) {
         printWindow.destroy();
       }
@@ -256,63 +163,167 @@ export function setupPdfIpcHandler(
 }
 
 /**
- * إنشاء النافذة الرئيسية
+ * إعداد مخزن الجلسات الآمن في userData باستخدام safeStorage
  */
-function createMainWindow(): any {
-  if (!BrowserWindow) return null;
+function getSessionStorePath(): string {
+  const userDir = app?.getPath ? app.getPath('userData') : process.cwd();
+  return path.join(userDir, 'spc_session_store.json');
+}
 
-  const isProd = app ? (app.isPackaged || process.env.NODE_ENV === 'production') : false;
-
-  // تعطيل شريط القوائم في الإنتاج
-  if (isProd && Menu) {
-    Menu.setApplicationMenu(null);
+function readSessionStore(): Record<string, string> {
+  try {
+    const storePath = getSessionStorePath();
+    if (fs.existsSync(storePath)) {
+      const raw = fs.readFileSync(storePath, 'utf8');
+      return JSON.parse(raw);
+    }
+  } catch {
+    // تجاهل
   }
+  return {};
+}
 
-  const preloadPath = path.join(__dirname, '../preload/index.mjs');
+function writeSessionStore(data: Record<string, string>): void {
+  try {
+    const storePath = getSessionStorePath();
+    const dir = path.dirname(storePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(storePath, JSON.stringify(data, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('تعذر حفظ ملف الجلسة الآمن:', err);
+  }
+}
 
-  const win = new BrowserWindow({
-    ...MAIN_WINDOW_CONFIG,
-    webPreferences: {
-      ...MAIN_WINDOW_CONFIG.webPreferences,
-      preload: fs.existsSync(preloadPath) ? preloadPath : path.join(__dirname, '../preload/index.js'),
+/**
+ * تسجيل قنوات IPC
+ */
+export function setupIpcHandlers(): void {
+  if (!ipcMain) return;
+
+  // 1. فحص ping -> pong
+  ipcMain.handle('ping', () => 'pong');
+
+  // 2. safeStorage للجلسات
+  ipcMain.handle('session:get', async (_event: any, key: string) => {
+    try {
+      const store = readSessionStore();
+      const encryptedBase64 = store[key];
+      if (!encryptedBase64) return null;
+
+      if (safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable()) {
+        const buffer = Buffer.from(encryptedBase64, 'base64');
+        return safeStorage.decryptString(buffer);
+      }
+      return encryptedBase64;
+    } catch (err) {
+      console.warn(`فشل استرجاع الجلسة للمفتاح (${key}):`, err);
+      return null;
     }
   });
 
-  setupSecureWindow(win);
+  ipcMain.handle('session:set', async (_event: any, key: string, value: string) => {
+    try {
+      let storedValue = value;
+      if (safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable()) {
+        const encryptedBuffer = safeStorage.encryptString(value);
+        storedValue = encryptedBuffer.toString('base64');
+      }
+      const store = readSessionStore();
+      store[key] = storedValue;
+      writeSessionStore(store);
+      return true;
+    } catch (err) {
+      console.warn(`فشل حفظ الجلسة للمفتاح (${key}):`, err);
+      return false;
+    }
+  });
 
-  // تعطيل DevTools في الإنتاج
-  if (isProd) {
-    win.webContents.on('devtools-opened', () => {
-      win.webContents.closeDevTools();
+  ipcMain.handle('session:remove', async (_event: any, key: string) => {
+    try {
+      const store = readSessionStore();
+      delete store[key];
+      writeSessionStore(store);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  // 3. حفظ الملفات saveFile
+  ipcMain.handle('file:save', async (_event: any, payload: { filename: string; content: any; mimeType?: string }) => {
+    try {
+      const docsDir = app ? app.getPath('documents') : process.cwd();
+      const targetPath = path.join(docsDir, payload.filename);
+      let buffer: Buffer;
+      if (typeof payload.content === 'string') {
+        buffer = Buffer.from(payload.content, 'utf8');
+      } else {
+        buffer = Buffer.from(payload.content);
+      }
+      fs.writeFileSync(targetPath, buffer);
+      return { success: true, path: targetPath };
+    } catch (err: any) {
+      return { success: false, error: err?.message };
+    }
+  });
+
+  // 4. قناة PDF المعتمدة
+  setupPdfIpcHandler(ipcMain, app, BrowserWindow, fs, path);
+}
+
+/**
+ * إنشاء النافذة الرئيسية
+ */
+function createMainWindow(): void {
+  mainWindow = new BrowserWindow({
+    ...MAIN_WINDOW_CONFIG,
+    webPreferences: {
+      ...MAIN_WINDOW_CONFIG.webPreferences,
+      preload: path.join(__dirname, '../preload/index.js')
+    }
+  });
+
+  setupSecureWindow(mainWindow);
+
+  const isDev = !app?.isPackaged && Boolean(process.env.ELECTRON_RENDERER_URL || process.env.VITE_DEV_SERVER_URL);
+
+  // في بيئة الإنتاج: تعطيل القائمة وتعطيل DevTools
+  if (!isDev) {
+    if (Menu?.setApplicationMenu) {
+      Menu.setApplicationMenu(null);
+    }
+    mainWindow.webContents?.on('devtools-opened', () => {
+      mainWindow.webContents.closeDevTools();
     });
   }
 
-  // تحميل الواجهة: URL في التطوير أو ملف محلي في الإنتاج
-  if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL']);
-  } else if (!app.isPackaged && process.env.NODE_ENV !== 'production') {
-    win.loadURL('http://localhost:3000');
+  // تحميل الواجهة
+  if (isDev && (process.env.ELECTRON_RENDERER_URL || process.env.VITE_DEV_SERVER_URL)) {
+    const devUrl = process.env.ELECTRON_RENDERER_URL || process.env.VITE_DEV_SERVER_URL || 'http://localhost:3000';
+    mainWindow.loadURL(devUrl);
   } else {
-    win.loadFile(path.join(__dirname, '../renderer/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
 
-  win.on('closed', () => {
+  mainWindow.on('closed', () => {
     mainWindow = null;
   });
-
-  return win;
 }
 
 // ---------------------------------------------------------------------------
-// دورة حياة تطبيق Electron الفعلي (Single Instance Lock و whenReady)
+// دورة حياة التطبيق الحقيقية (Single Instance Lock & whenReady)
 // ---------------------------------------------------------------------------
-if (app && app.requestSingleInstanceLock) {
+if (app && typeof app.requestSingleInstanceLock === 'function') {
   const gotTheLock = app.requestSingleInstanceLock();
 
   if (!gotTheLock) {
+    // النسخة الثانية تُنهى فوراً
     app.quit();
   } else {
     app.on('second-instance', () => {
+      // إظهار والتركيز على النافذة الأولى
       if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.focus();
@@ -320,8 +331,8 @@ if (app && app.requestSingleInstanceLock) {
     });
 
     app.whenReady().then(() => {
-      // تطبيق سياسة CSP فعلياً عبر session.webRequest.onHeadersReceived
-      if (session && session.defaultSession) {
+      // تطبيق CSP فعلياً على ترويسات الاستجابة
+      if (session?.defaultSession?.webRequest?.onHeadersReceived) {
         session.defaultSession.webRequest.onHeadersReceived((details: any, callback: any) => {
           callback({
             responseHeaders: {
@@ -332,15 +343,12 @@ if (app && app.requestSingleInstanceLock) {
         });
       }
 
-      // تسجيل القنوات
-      setupSessionIpcHandlers(ipcMain, app, safeStorage, fs, path);
-      setupPdfIpcHandler(ipcMain, app, BrowserWindow, fs, path);
-
-      mainWindow = createMainWindow();
+      setupIpcHandlers();
+      createMainWindow();
 
       app.on('activate', () => {
-        if (BrowserWindow && BrowserWindow.getAllWindows().length === 0) {
-          mainWindow = createMainWindow();
+        if (BrowserWindow.getAllWindows().length === 0) {
+          createMainWindow();
         }
       });
     });

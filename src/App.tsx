@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './renderer/pages/Login';
 import Dashboard from './renderer/pages/Dashboard';
@@ -12,24 +12,34 @@ import Register from './renderer/pages/Register';
 import Settings from './renderer/pages/Settings';
 import SelfTest from './renderer/pages/SelfTest';
 import ImportTool from './renderer/tools/ImportTool';
+import RestoreTool from './renderer/tools/Restore';
 import AppLayout from './renderer/components/AppLayout';
 import ProtectedRoute from './renderer/components/ProtectedRoute';
+import { startAutoSync } from './renderer/lib/requestService';
 
 // التحقق من وضع التطوير أو أعلام أدوات التطوير لاستبعاد مسارات الفحص في حزمة الإنتاج
 const isDevToolsEnabled = import.meta.env.DEV || import.meta.env.VITE_DEV_TOOLS === 'true';
 
 export default function App() {
+  useEffect(() => {
+    const stopAutoSync = startAutoSync();
+    return () => {
+      stopAutoSync();
+    };
+  }, []);
+
   return (
     <HashRouter>
       <Routes>
         {/* صفحة تسجيل الدخول */}
         <Route path="/login" element={<Login />} />
 
-        {/* لوحة الفحص الذاتي وأداة الاستيراد (متاحة في وضع التطوير فقط ومستبعدة في حزمة الإنتاج النهائية) */}
+        {/* لوحة الفحص الذاتي وأدوات الاستيراد والاستعادة (متاحة في وضع التطوير فقط ومستبعدة في حزمة الإنتاج النهائية) */}
         {isDevToolsEnabled ? (
           <>
             <Route path="/selftest" element={<SelfTest />} />
             <Route path="/tools/import" element={<ImportTool />} />
+            <Route path="/tools/restore" element={<RestoreTool />} />
           </>
         ) : null}
 

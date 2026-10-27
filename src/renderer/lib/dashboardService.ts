@@ -1,15 +1,14 @@
 /**
  * src/renderer/lib/dashboardService.ts
- * خدمة إحصائيات لوحة التحكم المركزية (المرحلة 9)
- * - استدعاء دالة dashboard_stats(p_from, p_to) في Supabase
- * - توفير محاكاة دقيقة مطابقة لنفس المخطط عند العمل المحلي دون Supabase
- * - حساب: عدد الطلبات، عدد المواد، القيمة الإجمالية، التوزيع بالحالة، التوزيع بالشهور، وأعلى الجهات والأقسام
- * - استثناء الطلبات المحذوفة ناعماً (deleted_at is not null) التزاماً بالقرار (د)
- * - قاعدة صارمة: الإحصاءات تُحسب في هذه الدالة وتُقدَّم جاهزة للواجهة، ولا يتم الحساب داخل مكونات React
+ * خدمة إحصائيات لوحة التحكم المركزية (المرحلة 9 والمرحلة F5)
+ * - استدعاء دالة dashboard_stats(p_from, p_to) عبر RPC حصراً من Supabase
+ * - خلو تام من أي تجميع في الواجهة (لا reduce ولا Map)
+ * - عند فشل الاستدعاء تُلقى رسالة خطأ عربية لعرضها في الواجهة
+ * - الوضع التجريبي للمطور محكوم بـ isOfflineDemoAllowed (من F2)
  */
 
 import { supabase, isConfigured, isOfflineDemoAllowed } from './supabase';
-import { registryService } from './registryService';
+import { platform } from './platform';
 import { RequestStatus, STATUS_ARABIC_LABELS } from '../../shared/schema';
 
 export interface StatusDistributionItem {
@@ -21,11 +20,11 @@ export interface StatusDistributionItem {
 }
 
 export interface MonthlyDistributionItem {
-  month: string;      // YYYY-MM
-  label: string;      // اسم أو نص الشهر بالعربية
-  count: number;      // عدد الطلبات
-  items_count: number;// عدد المواد
-  amount: number;     // إجمالي القيمة
+  month: string;       // YYYY-MM
+  label: string;       // اسم أو نص الشهر بالعربية
+  count: number;       // عدد الطلبات
+  items_count: number; // عدد المواد
+  amount: number;      // إجمالي القيمة
 }
 
 export interface TopEntityItem {
@@ -40,7 +39,18 @@ export interface TopDepartmentItem {
   amount: number;
 }
 
+export interface TopRequesterItem {
+  requester: string;
+  count: number;
+  amount: number;
+}
+
 export interface DashboardStats {
+  totals: {
+    requests: number;
+    items: number;
+    amount: number;
+  };
   total_requests: number;
   total_items: number;
   total_amount: number;
@@ -58,6 +68,9 @@ export interface DashboardStats {
   monthly_distribution: MonthlyDistributionItem[];
   top_entities: TopEntityItem[];
   top_departments: TopDepartmentItem[];
+  top_requesters?: TopRequesterItem[];
+  _isOfflineCached?: boolean;
+  _cachedAt?: string;
 }
 
 const ARABIC_MONTH_NAMES: Record<string, string> = {
@@ -89,219 +102,148 @@ export function formatMonthLabel(yyyyMm: string): string {
   return yyyyMm;
 }
 
-export const dashboardService = {
-  /**
-   * جلب إحصائيات لوحة التحكم عبر دالة dashboard_stats مع مرشح من/إلى
-   */
-  async getDashboardStats(fromDate?: string, toDate?: string): Promise<DashboardStats> {
-    // 1. في بيئة Supabase المربوطة
-    if (isConfigured) {
-      try {
-        const { data, error } = await supabase.rpc('dashboard_stats', {
-          p_from: fromDate || null,
-          p_to: toDate || null
-        });
-
-        if (!error && data) {
-          // التحقق من وجود التوزيع الشهري والمواد وإن كانت ناقصة من الدالة الأساسية نقوم بإثرائها
-          const baseStats = data as any;
-          const reqs = await registryService.fetchRequests({
-            fromDate,
-            toDate
-          });
-
-          return enrichStatsFromRequests(reqs, baseStats);
-        }
-      } catch (err) {
-        console.warn('فشل استدعاء dashboard_stats في Supabase، الانتقال للحساب الخدمي المحلي:', err);
-      }
-    }
-
-    // 2. الحساب الخدمي المحلي (المتطابق تماماً مع الدالة ومخططها)
-    if (!isOfflineDemoAllowed) {
-      return calculateDashboardStatsFromRequests([]);
-    }
-
-    const requests = await registryService.fetchRequests({
-      fromDate,
-      toDate
-    });
-
-    return calculateDashboardStatsFromRequests(requests);
-  }
-};
-
 /**
- * دالة نقية لحساب كامل إحصائيات لوحة التحكم من قائمة الطلبات
- * مع استثناء الطلبات المحذوفة ناعماً وتطبيق الترتيب وحساب التوزيع
+ * تحويل مخرجات دالة RPC الصادرة من قاعدة البيانات إلى واجهة DashboardStats المعتمدة
  */
-export function calculateDashboardStatsFromRequests(requests: any[]): DashboardStats {
-  // استثناء المحذوفة ناعماً فقط
-  const activeRequests = requests.filter((r) => !r.deleted_at);
+export function formatRpcDashboardStats(raw: any): DashboardStats {
+  const totals = raw?.totals || {
+    requests: Number(raw?.total_requests ?? 0),
+    items: Number(raw?.total_items ?? 0),
+    amount: Number(raw?.total_amount ?? 0)
+  };
 
-  let total_requests = activeRequests.length;
-  let total_items = 0;
-  let total_amount = 0;
+  const totalReqs = Number(totals.requests ?? raw?.total_requests ?? 0);
+  const totalItms = Number(totals.items ?? raw?.total_items ?? 0);
+  const totalAmt = Number(totals.amount ?? raw?.total_amount ?? 0);
 
-  let pending_count = 0;
-  let pending_amount = 0;
-  let executed_count = 0;
-  let executed_amount = 0;
-  let on_hold_count = 0;
-  let on_hold_amount = 0;
-  let rejected_count = 0;
-  let rejected_amount = 0;
-  let cancelled_count = 0;
-  let cancelled_amount = 0;
+  const rawStatuses: any[] = raw?.status_distribution || raw?.statuses || [];
+  const status_distribution: StatusDistributionItem[] = rawStatuses.map((s: any) => ({
+    status: s.status as RequestStatus,
+    label: s.label || STATUS_ARABIC_LABELS[s.status as RequestStatus] || s.status,
+    count: Number(s.count ?? 0),
+    amount: Number(s.amount ?? 0),
+    percentage: Number(s.percentage ?? 0)
+  }));
 
-  const statusMap = new Map<RequestStatus, { count: number; amount: number }>();
-  const monthlyMap = new Map<string, { count: number; items_count: number; amount: number }>();
-  const entityMap = new Map<string, { count: number; amount: number }>();
-  const deptMap = new Map<string, { count: number; amount: number }>();
+  const rawMonthly: any[] = raw?.monthly_distribution || raw?.monthly || [];
+  const monthly_distribution: MonthlyDistributionItem[] = rawMonthly.map((m: any) => ({
+    month: m.month,
+    label: m.label || formatMonthLabel(m.month),
+    count: Number(m.count ?? m.requests_count ?? 0),
+    items_count: Number(m.items_count ?? 0),
+    amount: Number(m.amount ?? m.total_amount ?? 0)
+  }));
 
-  // تهيئة الحالات الخمس المعتمدة وفق القرار D4
-  const allStatuses: RequestStatus[] = ['pending', 'executed', 'on_hold', 'rejected', 'cancelled'];
-  for (const st of allStatuses) {
-    statusMap.set(st, { count: 0, amount: 0 });
-  }
+  const top_entities: TopEntityItem[] = (raw?.top_entities || []).map((e: any) => ({
+    entity: e.entity,
+    count: Number(e.count ?? 0),
+    amount: Number(e.amount ?? 0)
+  }));
 
-  for (const req of activeRequests) {
-    const itemsCount = (req.items && req.items.length) || req.items_count || 0;
-    const reqAmount = req.total_amount !== undefined
-      ? req.total_amount
-      : (req.items || []).reduce((sum: number, itm: any) => sum + (itm.line_total || itm.qty * itm.unit_price), 0);
+  const top_departments: TopDepartmentItem[] = (raw?.top_departments || []).map((d: any) => ({
+    department: d.department,
+    count: Number(d.count ?? 0),
+    amount: Number(d.amount ?? 0)
+  }));
 
-    total_items += itemsCount;
-    total_amount += reqAmount;
-
-    // تجميع الحالات
-    const st = (req.status as RequestStatus) || 'pending';
-    const curStatus = statusMap.get(st) || { count: 0, amount: 0 };
-    curStatus.count += 1;
-    curStatus.amount += reqAmount;
-    statusMap.set(st, curStatus);
-
-    if (st === 'pending') {
-      pending_count++;
-      pending_amount += reqAmount;
-    } else if (st === 'executed') {
-      executed_count++;
-      executed_amount += reqAmount;
-    } else if (st === 'on_hold') {
-      on_hold_count++;
-      on_hold_amount += reqAmount;
-    } else if (st === 'rejected') {
-      rejected_count++;
-      rejected_amount += reqAmount;
-    } else if (st === 'cancelled') {
-      cancelled_count++;
-      cancelled_amount += reqAmount;
-    }
-
-    // تجميع الشهور (YYYY-MM)
-    if (req.request_date) {
-      const yyyyMm = req.request_date.substring(0, 7);
-      const curMonth = monthlyMap.get(yyyyMm) || { count: 0, items_count: 0, amount: 0 };
-      curMonth.count += 1;
-      curMonth.items_count += itemsCount;
-      curMonth.amount += reqAmount;
-      monthlyMap.set(yyyyMm, curMonth);
-    }
-
-    // تجميع الجهات الطالبة
-    const entity = (req.entity && req.entity.trim()) || 'جهة غير محددة';
-    const curEntity = entityMap.get(entity) || { count: 0, amount: 0 };
-    curEntity.count += 1;
-    curEntity.amount += reqAmount;
-    entityMap.set(entity, curEntity);
-
-    // تجميع الأقسام
-    const dept = (req.department && req.department.trim()) || 'غير محدد';
-    const curDept = deptMap.get(dept) || { count: 0, amount: 0 };
-    curDept.count += 1;
-    curDept.amount += reqAmount;
-    deptMap.set(dept, curDept);
-  }
-
-  // إعداد مصفوفة توزيع الحالات
-  const status_distribution: StatusDistributionItem[] = allStatuses.map((st) => {
-    const data = statusMap.get(st) || { count: 0, amount: 0 };
-    const percentage = total_requests > 0 ? Math.round((data.count / total_requests) * 1000) / 10 : 0;
-    return {
-      status: st,
-      label: STATUS_ARABIC_LABELS[st] || st,
-      count: data.count,
-      amount: Math.round(data.amount * 100) / 100,
-      percentage
-    };
-  });
-
-  // إعداد مصفوفة التوزيع الشهري مرتبة تصاعدياً زمنياً
-  const sortedMonths = Array.from(monthlyMap.keys()).sort();
-  const monthly_distribution: MonthlyDistributionItem[] = sortedMonths.map((m) => {
-    const val = monthlyMap.get(m)!;
-    return {
-      month: m,
-      label: formatMonthLabel(m),
-      count: val.count,
-      items_count: val.items_count,
-      amount: Math.round(val.amount * 100) / 100
-    };
-  });
-
-  // إعداد أعلى الجهات (أعلى 5 بالإنفاق)
-  const top_entities: TopEntityItem[] = Array.from(entityMap.entries())
-    .map(([entity, val]) => ({
-      entity,
-      count: val.count,
-      amount: Math.round(val.amount * 100) / 100
-    }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5);
-
-  // إعداد أعلى الأقسام (أعلى 5 بالإنفاق)
-  const top_departments: TopDepartmentItem[] = Array.from(deptMap.entries())
-    .map(([department, val]) => ({
-      department,
-      count: val.count,
-      amount: Math.round(val.amount * 100) / 100
-    }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5);
+  const top_requesters: TopRequesterItem[] = (raw?.top_requesters || []).map((q: any) => ({
+    requester: q.requester,
+    count: Number(q.count ?? 0),
+    amount: Number(q.amount ?? 0)
+  }));
 
   return {
-    total_requests,
-    total_items,
-    total_amount: Math.round(total_amount * 100) / 100,
-    pending_count,
-    pending_amount: Math.round(pending_amount * 100) / 100,
-    executed_count,
-    executed_amount: Math.round(executed_amount * 100) / 100,
-    on_hold_count,
-    on_hold_amount: Math.round(on_hold_amount * 100) / 100,
-    rejected_count,
-    rejected_amount: Math.round(rejected_amount * 100) / 100,
-    cancelled_count,
-    cancelled_amount: Math.round(cancelled_amount * 100) / 100,
+    totals: {
+      requests: totalReqs,
+      items: totalItms,
+      amount: totalAmt
+    },
+    total_requests: totalReqs,
+    total_items: totalItms,
+    total_amount: totalAmt,
+    pending_count: Number(raw?.pending_count ?? 0),
+    pending_amount: Number(raw?.pending_amount ?? 0),
+    executed_count: Number(raw?.executed_count ?? 0),
+    executed_amount: Number(raw?.executed_amount ?? 0),
+    on_hold_count: Number(raw?.on_hold_count ?? 0),
+    on_hold_amount: Number(raw?.on_hold_amount ?? 0),
+    rejected_count: Number(raw?.rejected_count ?? 0),
+    rejected_amount: Number(raw?.rejected_amount ?? 0),
+    cancelled_count: Number(raw?.cancelled_count ?? 0),
+    cancelled_amount: Number(raw?.cancelled_amount ?? 0),
     status_distribution,
     monthly_distribution,
     top_entities,
-    top_departments
+    top_departments,
+    top_requesters
   };
 }
 
-function enrichStatsFromRequests(requests: any[], baseRpcStats: any): DashboardStats {
-  const fullStats = calculateDashboardStatsFromRequests(requests);
-  return {
-    ...fullStats,
-    total_requests: baseRpcStats.total_requests ?? fullStats.total_requests,
-    total_amount: baseRpcStats.total_amount ?? fullStats.total_amount,
-    pending_count: baseRpcStats.pending_count ?? fullStats.pending_count,
-    pending_amount: baseRpcStats.pending_amount ?? fullStats.pending_amount,
-    executed_count: baseRpcStats.executed_count ?? fullStats.executed_count,
-    executed_amount: baseRpcStats.executed_amount ?? fullStats.executed_amount,
-    on_hold_count: baseRpcStats.on_hold_count ?? fullStats.on_hold_count,
-    rejected_count: baseRpcStats.rejected_count ?? fullStats.rejected_count,
-    cancelled_count: baseRpcStats.cancelled_count ?? fullStats.cancelled_count
-  };
-}
+export const dashboardService = {
+  /**
+   * جلب إحصائيات لوحة التحكم عبر استدعاء RPC فقط مع دعم التخزين المؤقت للقراءة دون اتصال
+   */
+  async getDashboardStats(fromDate?: string, toDate?: string): Promise<DashboardStats> {
+    if (!isConfigured) {
+      if (!isOfflineDemoAllowed) {
+        throw new Error('التطبيق غير مهيّأ، راجع المسؤول');
+      }
+      // في وضع العرض التجريبي للمطور
+      return formatRpcDashboardStats({
+        totals: { requests: 0, items: 0, amount: 0 },
+        total_requests: 0,
+        total_items: 0,
+        total_amount: 0,
+        statuses: [],
+        monthly: [],
+        top_entities: [],
+        top_departments: []
+      });
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('dashboard_stats', {
+        p_from: fromDate || null,
+        p_to: toDate || null
+      });
+
+      if (error) {
+        throw new Error(`تعذر جلب إحصائيات لوحة التحكم من الخادم: ${error.message}`);
+      }
+
+      if (!data) {
+        throw new Error('لم يتم استلام أي بيانات إحصائية من الخادم');
+      }
+
+      const formatted = formatRpcDashboardStats(data);
+      // حفظ آخر قراءة ناجحة مؤقتاً لعرضها عند انقطاع الاتصال (المرحلة 9)
+      if (!fromDate && !toDate) {
+        platform.session.set('spc_cache_dashboard', JSON.stringify({
+          cached_at: new Date().toISOString(),
+          stats: formatted
+        })).catch(() => {});
+      }
+
+      return formatted;
+    } catch (err: any) {
+      // عند فشل الاتصال، نحاول استرجاع آخر قراءة مخزنة مؤقتاً
+      try {
+        const cachedRaw = await platform.session.get('spc_cache_dashboard');
+        if (cachedRaw) {
+          const parsed = JSON.parse(cachedRaw);
+          if (parsed && parsed.stats) {
+            return {
+              ...parsed.stats,
+              _isOfflineCached: true,
+              _cachedAt: parsed.cached_at
+            };
+          }
+        }
+      } catch {
+        // تجاهل
+      }
+      throw err;
+    }
+  }
+};
+

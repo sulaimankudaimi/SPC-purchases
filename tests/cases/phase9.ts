@@ -13,9 +13,167 @@
 import { t, assert } from '../lib/harness';
 import {
   dashboardService,
-  calculateDashboardStatsFromRequests,
-  DashboardStats
+  DashboardStats,
+  StatusDistributionItem,
+  MonthlyDistributionItem,
+  TopEntityItem,
+  TopDepartmentItem,
+  formatMonthLabel
 } from '../../src/renderer/lib/dashboardService';
+import { RequestStatus, STATUS_ARABIC_LABELS } from '../../src/shared/schema';
+
+/**
+ * دالة مرجعية مستقلة داخل الاختبار لحساب إحصائيات لوحة التحكم من الطلبات الخام
+ */
+export function calculateDashboardStatsFromRequests(requests: any[]): DashboardStats {
+  const activeRequests = requests.filter((r) => !r.deleted_at);
+
+  let total_requests = activeRequests.length;
+  let total_items = 0;
+  let total_amount = 0;
+
+  let pending_count = 0;
+  let pending_amount = 0;
+  let executed_count = 0;
+  let executed_amount = 0;
+  let on_hold_count = 0;
+  let on_hold_amount = 0;
+  let rejected_count = 0;
+  let rejected_amount = 0;
+  let cancelled_count = 0;
+  let cancelled_amount = 0;
+
+  const statusMap = new Map<RequestStatus, { count: number; amount: number }>();
+  const monthlyMap = new Map<string, { count: number; items_count: number; amount: number }>();
+  const entityMap = new Map<string, { count: number; amount: number }>();
+  const deptMap = new Map<string, { count: number; amount: number }>();
+
+  const allStatuses: RequestStatus[] = ['pending', 'executed', 'on_hold', 'rejected', 'cancelled'];
+  for (const st of allStatuses) {
+    statusMap.set(st, { count: 0, amount: 0 });
+  }
+
+  for (const req of activeRequests) {
+    const itemsCount = (req.items && req.items.length) || req.items_count || 0;
+    const reqAmount = req.total_amount !== undefined
+      ? req.total_amount
+      : (req.items || []).reduce((sum: number, itm: any) => sum + (itm.line_total || itm.qty * itm.unit_price), 0);
+
+    total_items += itemsCount;
+    total_amount += reqAmount;
+
+    const st = (req.status as RequestStatus) || 'pending';
+    const curStatus = statusMap.get(st) || { count: 0, amount: 0 };
+    curStatus.count += 1;
+    curStatus.amount += reqAmount;
+    statusMap.set(st, curStatus);
+
+    if (st === 'pending') {
+      pending_count++;
+      pending_amount += reqAmount;
+    } else if (st === 'executed') {
+      executed_count++;
+      executed_amount += reqAmount;
+    } else if (st === 'on_hold') {
+      on_hold_count++;
+      on_hold_amount += reqAmount;
+    } else if (st === 'rejected') {
+      rejected_count++;
+      rejected_amount += reqAmount;
+    } else if (st === 'cancelled') {
+      cancelled_count++;
+      cancelled_amount += reqAmount;
+    }
+
+    if (req.request_date) {
+      const yyyyMm = req.request_date.substring(0, 7);
+      const curMonth = monthlyMap.get(yyyyMm) || { count: 0, items_count: 0, amount: 0 };
+      curMonth.count += 1;
+      curMonth.items_count += itemsCount;
+      curMonth.amount += reqAmount;
+      monthlyMap.set(yyyyMm, curMonth);
+    }
+
+    const entity = (req.entity && req.entity.trim()) || 'جهة غير محددة';
+    const curEntity = entityMap.get(entity) || { count: 0, amount: 0 };
+    curEntity.count += 1;
+    curEntity.amount += reqAmount;
+    entityMap.set(entity, curEntity);
+
+    const dept = (req.department && req.department.trim()) || 'غير محدد';
+    const curDept = deptMap.get(dept) || { count: 0, amount: 0 };
+    curDept.count += 1;
+    curDept.amount += reqAmount;
+    deptMap.set(dept, curDept);
+  }
+
+  const status_distribution: StatusDistributionItem[] = allStatuses.map((st) => {
+    const data = statusMap.get(st) || { count: 0, amount: 0 };
+    const percentage = total_requests > 0 ? Math.round((data.count / total_requests) * 1000) / 10 : 0;
+    return {
+      status: st,
+      label: STATUS_ARABIC_LABELS[st] || st,
+      count: data.count,
+      amount: Math.round(data.amount * 100) / 100,
+      percentage
+    };
+  });
+
+  const sortedMonths = Array.from(monthlyMap.keys()).sort();
+  const monthly_distribution: MonthlyDistributionItem[] = sortedMonths.map((m) => {
+    const val = monthlyMap.get(m)!;
+    return {
+      month: m,
+      label: formatMonthLabel(m),
+      count: val.count,
+      items_count: val.items_count,
+      amount: Math.round(val.amount * 100) / 100
+    };
+  });
+
+  const top_entities: TopEntityItem[] = Array.from(entityMap.entries())
+    .map(([entity, val]) => ({
+      entity,
+      count: val.count,
+      amount: Math.round(val.amount * 100) / 100
+    }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5);
+
+  const top_departments: TopDepartmentItem[] = Array.from(deptMap.entries())
+    .map(([department, val]) => ({
+      department,
+      count: val.count,
+      amount: Math.round(val.amount * 100) / 100
+    }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5);
+
+  return {
+    totals: {
+      requests: total_requests,
+      items: total_items,
+      amount: Math.round(total_amount * 100) / 100
+    },
+    total_requests,
+    total_items,
+    total_amount: Math.round(total_amount * 100) / 100,
+    pending_count,
+    pending_amount: Math.round(pending_amount * 100) / 100,
+    executed_count,
+    executed_amount: Math.round(executed_amount * 100) / 100,
+    on_hold_count,
+    on_hold_amount: Math.round(on_hold_amount * 100) / 100,
+    rejected_count,
+    rejected_amount: Math.round(rejected_amount * 100) / 100,
+    cancelled_count,
+    cancelled_amount: Math.round(cancelled_amount * 100) / 100,
+    status_distribution,
+    monthly_distribution,
+    top_entities,
+    top_departments
+  };
+}
 
 export function registerPhase9Tests(): void {
   // -------------------------------------------------------------------------

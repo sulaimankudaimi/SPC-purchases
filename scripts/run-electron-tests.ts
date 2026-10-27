@@ -33,12 +33,12 @@ function check(id: string, name: string, fn: () => void | Promise<void>) {
 }
 
 async function run() {
-  console.log('=== تشغيل اختبارات Electron الساكنة لـ CI (static-config E-1 إلى E-4) ===\n');
+  console.log('=== تشغيل فحوصات الإعداد الثابت (static-config) ===\n');
 
   // -------------------------------------------------------------------------
-  // E-1: تشغيل النافذة وأعلام الأمان
+  // static-config-1: تشغيل النافذة وأعلام الأمان
   // -------------------------------------------------------------------------
-  check('E-1', 'إعدادات النافذة وأعلام الأمان (contextIsolation=true, sandbox=true, nodeIntegration=false, CSP)', () => {
+  check('static-config-1', 'إعدادات النافذة وأعلام الأمان (contextIsolation=true, sandbox=true, nodeIntegration=false, CSP)', () => {
     if (!MAIN_WINDOW_CONFIG) throw new Error('إعدادات النافذة الرئيسية مفقودة');
     if (MAIN_WINDOW_CONFIG.minWidth < 1100 || MAIN_WINDOW_CONFIG.minHeight < 700) {
       throw new Error(`أبعاد النافذة الدنيا أصغر من 1100x700: ${MAIN_WINDOW_CONFIG.minWidth}x${MAIN_WINDOW_CONFIG.minHeight}`);
@@ -52,9 +52,9 @@ async function run() {
   });
 
   // -------------------------------------------------------------------------
-  // E-2: فحص الأمان وعدم تضمين مفاتيح service_role في src/ (قاعدة 8 و D5)
+  // static-config-2: فحص الأمان وعدم تضمين مفاتيح service_role في src/ (قاعدة 8 و D5)
   // -------------------------------------------------------------------------
-  check('E-2', 'خلو ملفات الواجهة والعميل src/ من أي مفاتيح service_role (قاعدة 8)', () => {
+  check('static-config-2', 'خلو ملفات الواجهة والعميل src/ من أي مفاتيح service_role (قاعدة 8)', () => {
     const srcDir = path.join(process.cwd(), 'src');
     function scanDir(dir: string) {
       const files = fs.readdirSync(dir);
@@ -75,9 +75,9 @@ async function run() {
   });
 
   // -------------------------------------------------------------------------
-  // E-3: معايير توليد PDF بصفحات 1/12/13 ومقاس A4 والنص Notes ومسار الأرشيف
+  // static-config-3: معايير توليد PDF بصفحات 1/12/13 ومقاس A4 والنص Notes ومسار الأرشيف
   // -------------------------------------------------------------------------
-  check('E-3', 'تخطيط PDF: تقسيم الصفحات 1 و12 و13، A4، تصحيح Notes، ومسار الأرشيف (D2, D8, D10)', () => {
+  check('static-config-3', 'تخطيط PDF: تقسيم الصفحات 1 و12 و13، A4، تصحيح Notes، ومسار الأرشيف (D2, D8, D10)', () => {
     // 1. فحص 1 مادة -> صفحة واحدة
     const items1 = [{ line_no: 1, name: 'أنبوب', specs: '', unit: 'عدد', qty: 2, unit_price: 100, line_total: 200, notes: '' }];
     const pages1 = paginate(items1);
@@ -137,9 +137,9 @@ async function run() {
   });
 
   // -------------------------------------------------------------------------
-  // E-4: إعدادات مثبت NSIS والتنصيب
+  // static-config-4: إعدادات مثبت NSIS والتنصيب
   // -------------------------------------------------------------------------
-  check('E-4', 'التحقق من إعدادات electron-builder لـ NSIS ومسارات الاختصارات (D1, D12)', () => {
+  check('static-config-4', 'التحقق من إعدادات electron-builder لـ NSIS ومسارات الاختصارات (D1, D12)', () => {
     const configPath = path.join(process.cwd(), 'electron-builder.yml');
     const content = fs.readFileSync(configPath, 'utf8');
 
