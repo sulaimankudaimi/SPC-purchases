@@ -19,32 +19,31 @@ jobs:
           node-version: lts/*
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
-      - name: Verify package versions via npm view (Rule 10 / D21)
+      - name: Compare pinned packages against npm view (warn-only)
         shell: bash
         run: |
-          check_pkg() {
-            PKG=$1
-            INSTALLED=$(node -p "require('./package.json').devDependencies['$PKG'] || require('./package.json').dependencies['$PKG'] || 'unknown'")
-            LATEST=$(npm view "$PKG" version 2>/dev/null || echo "$INSTALLED")
-            echo "Package: $PKG | Pinned: $INSTALLED | Latest npm: $LATEST"
-            if [ "$INSTALLED" != "$LATEST" ] && [ "$LATEST" != "unknown" ]; then
-              echo "::warning::Package $PKG pinned version ($INSTALLED) differs from latest ($LATEST)."
-            fi
-          }
-          check_pkg electron
-          check_pkg electron-vite
-          check_pkg electron-builder
-          check_pkg playwright
-          check_pkg vitest
-          check_pkg eslint
-          check_pkg prettier
-          check_pkg react
-          check_pkg @supabase/supabase-js
-          check_pkg recharts
-          check_pkg zod
-          check_pkg xlsx
+          node -e '
+            const fs = require("fs");
+            const { execSync } = require("child_process");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const pkgsToCheck = ["electron", "electron-vite", "electron-builder", "playwright", "vitest", "eslint", "prettier"];
+            console.log("=== Checking pinned package versions vs latest registry ===");
+            for (const p of pkgsToCheck) {
+              const pinned = (pkg.devDependencies && pkg.devDependencies[p]) || (pkg.dependencies && pkg.dependencies[p]);
+              try {
+                const latest = execSync(`npm view ${p} version`, { encoding: "utf8" }).trim();
+                if (pinned !== latest) {
+                  console.log(`::warning::Package "${p}" pinned at ${pinned}, latest is ${latest}`);
+                } else {
+                  console.log(`Package "${p}" is up to date (${pinned})`);
+                }
+              } catch (e) {
+                console.log(`::warning::Could not query npm view for ${p}`);
+              }
+            }
+          '
 
       - name: TypeScript Typecheck (tsc --noEmit)
         run: npm run typecheck
@@ -52,48 +51,37 @@ jobs:
       - name: Generate assets, fonts, and NSIS icon (assets/icon.ico)
         run: node scripts/generate-assets.mjs
 
-      - name: Run static configuration checks (static-config)
+      - name: Run static-config tests (static-config-1 to 4)
         run: npx tsx scripts/run-electron-tests.ts
 
-      - name: Verify Supabase Secrets are configured
+      - name: Validate Supabase Secrets
         shell: bash
+        env:
+          PROD_URL: ${{ secrets.PROD_SUPABASE_URL }}
+          PROD_KEY: ${{ secrets.PROD_SUPABASE_ANON_KEY }}
         run: |
-          if [ -z "${{ secrets.PROD_SUPABASE_URL }}" ] || [ -z "${{ secrets.PROD_SUPABASE_ANON_KEY }}" ]; then
-            echo "::error::PROD_SUPABASE_URL and PROD_SUPABASE_ANON_KEY secrets must be configured before packaging!"
+          if [ -z "$PROD_URL" ] || [ -z "$PROD_KEY" ]; then
+            echo "::error::PROD_SUPABASE_URL or PROD_SUPABASE_ANON_KEY secret is missing or empty!"
             exit 1
           fi
 
-      - name: Build application bundle (electron-vite build)
+      - name: Build application bundle
         run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.PROD_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.PROD_SUPABASE_ANON_KEY }}
           VITE_DEV_TOOLS: 'false'
 
-      - name: Run Playwright Electron E2E Tests (E1 to E6)
-        run: npx playwright test
-        continue-on-error: true
-
-      - name: Record E2E Summary to Step Summary
+      - name: Run Playwright Electron E2E Tests (Windows GUI — xvfb not needed on Windows)
         shell: bash
         run: |
-          echo "### ملخص اختبارات Playwright / Electron E2E (E1 إلى E6)" >> $GITHUB_STEP_SUMMARY
-          echo "| الاختبار | الوصف | الحالة |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| **E1** | فتح النافذة بـ RTL ولغة AR وعنوان منظومة المشتريات | ✅ ناجح |" >> $GITHUB_STEP_SUMMARY
-          echo "| **E2** | عزل السياق و ping ورفض فتح النوافذ المنبثقة | ✅ ناجح |" >> $GITHUB_STEP_SUMMARY
-          echo "| **E3** | حصر التشغيل بنسخة واحدة (Single Instance Lock) | ✅ ناجح |" >> $GITHUB_STEP_SUMMARY
-          echo "| **E4** | توليد PDF بصفحات 1/1/2 ومقاس A4 وحفظ في الأرشيف | ✅ ناجح |" >> $GITHUB_STEP_SUMMARY
-          echo "| **E5** | حفظ واستعادة الجلسة المشفرة عبر safeStorage | ✅ ناجح |" >> $GITHUB_STEP_SUMMARY
-          echo "| **E6** | حظر القائمة الافتراضية و DevTools في الإنتاج | ✅ ناجح |" >> $GITHUB_STEP_SUMMARY
+          echo "### نتائج اختبارات Playwright Electron E2E (Windows GUI — xvfb غير لازمة على ويندوز)" >> $GITHUB_STEP_SUMMARY
+          npx playwright test tests/e2e/electron.spec.ts
 
       - name: Build Windows NSIS Installer (EXE via electron-builder)
         run: npx electron-builder --win --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_SUPABASE_URL: ${{ secrets.PROD_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.PROD_SUPABASE_ANON_KEY }}
-          VITE_DEV_TOOLS: 'false'
 
       - name: Upload Installer Artifact (Windows EXE)
         uses: actions/upload-artifact@v4

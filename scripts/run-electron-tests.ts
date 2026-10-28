@@ -1,10 +1,10 @@
 /**
  * scripts/run-electron-tests.ts
- * اختبارات Electron المؤجلة لبيئة Windows CI (المرحلة 10):
- * - E-1: إعدادات النافذة وأعلام الأمان (contextIsolation, sandbox, nodeIntegration, CSP, الأبعاد)
- * - E-2: فحص الأمان وعدم تضمين مفتاح service_role في كود العميل src/ (قاعدة 8 و D5)
- * - E-3: التحقق من معايير توليد PDF بصفحات 1/12/13 و A4 والنص `Notes` ومسار الأرشيف
- * - E-4: إعدادات التنصيب ومثبت NSIS في electron-builder.yml (D1 و D12)
+ * فحوصات الإعداد الثابت (static-config) المفحوصة قبل بناء الحزمة:
+ * - static-config-1: إعدادات النافذة وأعلام الأمان (contextIsolation, sandbox, nodeIntegration, CSP, الأبعاد)
+ * - static-config-2: فحص الأمان وعدم تضمين مفتاح service_role في كود العميل src/ (قاعدة 8 و D5)
+ * - static-config-3: التحقق من معايير توليد PDF بصفحات 1/12/13 و A4 والنص `Notes` ومسار الأرشيف
+ * - static-config-4: إعدادات التنصيب ومثبت NSIS في electron-builder.yml (D1 و D12)
  */
 
 import fs from 'node:fs';
@@ -157,13 +157,13 @@ async function run() {
     if (!content.includes('createDesktopShortcut: always')) throw new Error('إنشاء اختصار سطح المكتب مطلوب دائماً');
   });
 
-  console.log('\n--- نتائج فحص Electron المؤجل ---');
+  console.log('\n--- نتائج فحص الإعداد الثابت (static-config) ---');
   const failed = results.filter((r) => !r.passed);
   if (failed.length > 0) {
     console.error(`❌ فشل ${failed.length} من أصل ${results.length} فحصاً!`);
     process.exit(1);
   } else {
-    console.log(`✅ نجحت كافة فحوصات Electron المؤجلة (${results.length}/${results.length}) بنسبة 100%!`);
+    console.log(`✅ نجحت كافة فحوصات الإعداد الثابت static-config (${results.length}/${results.length}) بنسبة 100%!`);
   }
 }
 

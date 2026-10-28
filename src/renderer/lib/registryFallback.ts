@@ -6,8 +6,6 @@
 import { RegistryRequest } from './registryTypes';
 import { RequestStatus } from '../../shared/schema';
 import { platform } from './platform';
-import { generateLegacyExcelRows } from '../../../scripts/generate-legacy-excel';
-import { parseLegacyRows } from '../../../scripts/import-core';
 
 export interface AuditLogEntry {
   id: number | string;
@@ -23,94 +21,8 @@ export async function getLocalStore(): Promise<{ requests: RegistryRequest[]; au
   try {
     const rawReq = await platform.session.get('spc_registry_requests');
     const rawLogs = await platform.session.get('spc_audit_logs');
-    let requests: RegistryRequest[] = rawReq ? JSON.parse(rawReq) : [];
-    let auditLogs: AuditLogEntry[] = rawLogs ? JSON.parse(rawLogs) : [];
-
-    if (requests.length === 0) {
-      const legacyRows = generateLegacyExcelRows();
-      const parsed = parseLegacyRows(legacyRows);
-      requests = parsed.requests.map((r, idx) => ({
-        id: r.id || `req_legacy_${idx + 1}`,
-        code: r.code,
-        code_norm: r.code_norm,
-        request_date: r.request_date,
-        entity: r.entity,
-        requester: r.requester,
-        department: r.department,
-        delivery_place: r.delivery_place,
-        delivery_date: r.delivery_date,
-        currency: r.currency || 'ليرة سورية جديدة',
-        status: r.status as RequestStatus,
-        status_note: r.status_note,
-        notes: r.notes,
-        signatories: {},
-        pdf_local_path: r.pdf_local_path,
-        pdf_storage_path: null,
-        invoice_storage_path: null,
-        needs_review: r.needs_review,
-        legacy_row: r.legacy_row,
-        created_at: new Date(2026, 7, 19).toISOString(),
-        updated_at: new Date(2026, 7, 19).toISOString(),
-        deleted_at: null,
-        items: r.items.map((itm) => ({
-          id: itm.id,
-          request_id: itm.request_id,
-          line_no: itm.line_no,
-          name: itm.name,
-          specs: itm.specs,
-          unit: itm.unit,
-          qty: itm.qty,
-          unit_price: itm.unit_price,
-          line_total: itm.line_total,
-          legacy_total: itm.legacy_total,
-          notes: itm.notes
-        }))
-      }));
-
-      const extraRaw = await platform.session.get('spc_saved_requests');
-      if (extraRaw) {
-        const extra: any[] = JSON.parse(extraRaw);
-        for (const er of extra) {
-          if (!requests.some((r) => r.code === er.code)) {
-            requests.unshift({
-              id: er.id,
-              code: er.code,
-              code_norm: er.code.toLowerCase().replace(/\s+/g, ''),
-              request_date: er.request_date,
-              entity: er.entity,
-              requester: er.requester,
-              department: er.department || null,
-              delivery_place: er.delivery_place || null,
-              delivery_date: er.delivery_date || null,
-              currency: er.currency || 'ليرة سورية جديدة',
-              status: er.status || 'pending',
-              status_note: er.status_note || null,
-              notes: er.notes || null,
-              signatories: er.signatories || {},
-              pdf_local_path: er.pdf_local_path || null,
-              pdf_storage_path: er.pdf_storage_path || null,
-              invoice_storage_path: er.invoice_storage_path || null,
-              needs_review: false,
-              deleted_at: null,
-              items: (er.items || []).map((itm: any, i: number) => ({
-                id: `itm_${er.id}_${i + 1}`,
-                request_id: er.id,
-                line_no: itm.line_no || i + 1,
-                name: itm.name,
-                specs: itm.specs || null,
-                unit: itm.unit || null,
-                qty: itm.qty,
-                unit_price: itm.unit_price,
-                line_total: itm.qty * itm.unit_price,
-                notes: itm.notes || null
-              }))
-            });
-          }
-        }
-      }
-
-      await platform.session.set('spc_registry_requests', JSON.stringify(requests));
-    }
+    const requests: RegistryRequest[] = rawReq ? JSON.parse(rawReq) : [];
+    const auditLogs: AuditLogEntry[] = rawLogs ? JSON.parse(rawLogs) : [];
 
     return { requests, auditLogs };
   } catch (err) {

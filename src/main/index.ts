@@ -10,6 +10,7 @@
  * - تسجيل قنوات IPC: ping، التخزين الآمن safeStorage في userData، حفظ الملفات، وقناة printToPDF
  */
 
+import fs from 'node:fs';
 import path from 'node:path';
 import { setupPdfIpcHandler, setupIpcHandlers as registerIpcHandlers } from './ipcHandlers';
 
@@ -107,11 +108,15 @@ export function setupIpcHandlers(): void {
  * إنشاء النافذة الرئيسية
  */
 function createMainWindow(): void {
+  const preloadMjs = path.join(__dirname, '../preload/index.mjs');
+  const preloadJs = path.join(__dirname, '../preload/index.js');
+  const preloadPath = fs.existsSync(preloadMjs) ? preloadMjs : preloadJs;
+
   mainWindow = new BrowserWindow({
     ...MAIN_WINDOW_CONFIG,
     webPreferences: {
       ...MAIN_WINDOW_CONFIG.webPreferences,
-      preload: path.join(__dirname, '../preload/index.js')
+      preload: preloadPath
     }
   });
 

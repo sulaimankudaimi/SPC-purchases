@@ -17,9 +17,10 @@ export interface ReferenceCheckItem {
 interface ImportReferenceMatchProps {
   checks: ReferenceCheckItem[];
   allPassed: boolean;
+  dateMismatches?: string[];
 }
 
-export const ImportReferenceMatch: React.FC<ImportReferenceMatchProps> = ({ checks, allPassed }) => {
+export const ImportReferenceMatch: React.FC<ImportReferenceMatchProps> = ({ checks, allPassed, dateMismatches }) => {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6">
       <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">

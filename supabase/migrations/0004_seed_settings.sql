@@ -16,7 +16,7 @@ insert into settings (key, value) values
 
   -- مسار مجلد الأرشيف المحلي الافتراضي (D10)
   ('archive_dir', jsonb_build_object(
-    'path', 'Documents\\ارشيف spc'
+    'path', 'Documents\ارشيف spc'
   )),
 
   -- العملة الافتراضية المعتمدة (SPEC §1.1 و D19)

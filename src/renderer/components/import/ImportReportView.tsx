@@ -5,14 +5,45 @@
 
 import React from 'react';
 import { AlertCircle, AlertTriangle } from 'lucide-react';
-import { ImportResult } from '../../../../scripts/import-core';
+import { ImportResult, ImportReport, ImportLookups } from '../../../../scripts/import-core';
 
 interface ImportReportViewProps {
-  importResult: ImportResult;
+  importResult?: ImportResult;
+  report?: ImportReport;
+  lookups?: ImportLookups;
 }
 
-export const ImportReportView: React.FC<ImportReportViewProps> = ({ importResult }) => {
-  const { lookups, report } = importResult;
+export const ImportReportView: React.FC<ImportReportViewProps> = ({
+  importResult,
+  report: propReport,
+  lookups: propLookups
+}) => {
+  const lookups: ImportLookups =
+    propLookups ||
+    importResult?.lookups || {
+      entities: [],
+      requesters: [],
+      departments: [],
+      deliveryPlaces: [],
+      units: []
+    };
+  const report: ImportReport =
+    propReport ||
+    importResult?.report || {
+      totalRowsProcessed: 0,
+      totalRequests: 0,
+      totalItems: 0,
+      calculatedSum: 0,
+      legacyStoredSum: 0,
+      sumDifference: 0,
+      statusDistribution: { pending: 0, executed: 0, on_hold: 0, rejected: 0, cancelled: 0 },
+      itemStatusDistribution: { pending: 0, executed: 0, on_hold: 0, rejected: 0, cancelled: 0 },
+      needsReviewRequests: [],
+      uniqueUnits: [],
+      nameSuggestions: { entities: [], requesters: [], departments: [] },
+      conflicts: [],
+      rejectedRows: []
+    };
   const { rejectedRows, conflicts, nameSuggestions } = report;
 
   return (

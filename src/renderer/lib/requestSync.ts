@@ -83,12 +83,6 @@ export async function syncOutbox(options?: { online?: boolean }): Promise<SyncOu
         if (rawReg) {
           regRequests = JSON.parse(rawReg);
         }
-        if (regRequests.length === 0) {
-          const { generateLegacyExcelRows } = await import('../../../scripts/generate-legacy-excel');
-          const { parseLegacyRows } = await import('../../../scripts/import-core');
-          const parsed = parseLegacyRows(generateLegacyExcelRows());
-          regRequests = parsed.requests as any[];
-        }
         const regIdx = regRequests.findIndex((r) => r.id === item.id);
         if (regIdx >= 0) {
           regRequests[regIdx] = newReq;

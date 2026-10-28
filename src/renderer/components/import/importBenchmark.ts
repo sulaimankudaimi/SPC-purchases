@@ -94,21 +94,37 @@ export function buildClipboardReport(importResult: ImportResult, benchmarkData: 
   lines.push(`- الوحدات (${importResult.lookups.units.length}): ${importResult.lookups.units.join(' | ')}`);
 
   lines.push('');
-  lines.push(`--- 3. اقتراحات دمج الأسماء المتقاربة (${r.suggestedMerges.length}) ---`);
-  for (const m of r.suggestedMerges) {
-    lines.push(`- ${m.field}: "${m.nameA}" <-> "${m.nameB}" (نسبة التشابه: ${Math.round(m.similarity * 100)}%)`);
+  const totalSuggestions =
+    (r.nameSuggestions?.entities?.length || 0) +
+    (r.nameSuggestions?.requesters?.length || 0) +
+    (r.nameSuggestions?.departments?.length || 0);
+  lines.push(`--- 3. اقتراحات دمج الأسماء المتقاربة (${totalSuggestions}) ---`);
+  if (r.nameSuggestions?.entities?.length) {
+    for (const s of r.nameSuggestions.entities) {
+      lines.push(`- جهة: ${s}`);
+    }
+  }
+  if (r.nameSuggestions?.requesters?.length) {
+    for (const s of r.nameSuggestions.requesters) {
+      lines.push(`- طالب: ${s}`);
+    }
+  }
+  if (r.nameSuggestions?.departments?.length) {
+    for (const s of r.nameSuggestions.departments) {
+      lines.push(`- قسم: ${s}`);
+    }
   }
 
   lines.push('');
-  lines.push(`--- 4. تعارضات الرموز (${r.codeConflicts.length}) ---`);
-  for (const c of r.codeConflicts) {
-    lines.push(`- الرمز ${c.code}: صفوف متكررة (${c.rows.join(', ')})`);
+  lines.push(`--- 4. تعارضات الرموز (${r.conflicts.length}) ---`);
+  for (const c of r.conflicts) {
+    lines.push(`- ${c}`);
   }
 
   lines.push('');
   lines.push(`--- 5. الصفوف المرفوضة (${r.rejectedRows.length}) ---`);
   for (const rej of r.rejectedRows) {
-    lines.push(`- الصف ${rej.rowIndex}: ${rej.reason}`);
+    lines.push(`- الصف ${rej.rowNum}: ${rej.reason}`);
   }
 
   return lines.join('\n');

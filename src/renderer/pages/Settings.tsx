@@ -66,7 +66,7 @@ export default function Settings() {
     setFeedback(null);
     try {
       await updateSetting('signatories', settings.signatories);
-      await updateSetting('archive_folder', settings.archive_folder);
+      await updateSetting('archive_dir', settings.archive_dir);
       await updateSetting('currency', settings.currency);
       await updateSetting('auto_fill_requester', settings.auto_fill_requester);
 
@@ -265,8 +265,8 @@ export default function Settings() {
               <label className="block font-semibold text-slate-700 mb-1">مسار المجلد:</label>
               <input
                 type="text"
-                value={settings.archive_folder.path}
-                onChange={(e) => setSettings((p) => ({ ...p, archive_folder: { ...p.archive_folder, path: e.target.value } }))}
+                value={settings.archive_dir.path}
+                onChange={(e) => setSettings((p) => ({ ...p, archive_dir: { ...p.archive_dir, path: e.target.value } }))}
                 className="w-full border border-slate-300 rounded-lg p-2 text-xs font-mono focus:ring-2 focus:ring-emerald-500"
               />
             </div>

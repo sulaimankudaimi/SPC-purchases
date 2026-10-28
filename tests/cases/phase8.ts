@@ -18,14 +18,60 @@ import {
   exportRegistryToExcel,
   createRegistryWorksheet
 } from '../../src/renderer/lib/registryService';
+import { generateLegacySampleRows } from '../fixtures/legacy-sample';
+import { parseLegacyRows } from '../../scripts/import-core';
+import { platform } from '../../src/renderer/lib/platform';
 
 export function registerPhase8Tests(): void {
   // -------------------------------------------------------------------------
   // T-8.1: الترتيب الزمني والبحث الشامل وتصفية الحالات والتواريخ
   // -------------------------------------------------------------------------
   t('T-8.1', 'الترتيب الزمني (التاريخ تنازلياً ثم الرمز) والبحث المتعدد والتصفية', async () => {
-    // 1. جلب كافة الطلبات غير المحذوفة
-    const all = await registryService.fetchRequests();
+    // تجهيز بيانات الاختبار في جلسة الفحص عند فراغ المخزن
+    let all = await registryService.fetchRequests();
+    if (all.length === 0) {
+      const parsed = parseLegacyRows(generateLegacySampleRows());
+      const testRequests = parsed.requests.map((r, idx) => ({
+        id: r.id || `req_legacy_${idx + 1}`,
+        code: r.code,
+        code_norm: r.code_norm,
+        request_date: r.request_date,
+        entity: r.entity,
+        requester: r.requester,
+        department: r.department,
+        delivery_place: r.delivery_place,
+        delivery_date: r.delivery_date,
+        currency: r.currency || 'ليرة سورية جديدة',
+        status: r.status as any,
+        status_note: r.status_note,
+        notes: r.notes,
+        signatories: {},
+        pdf_local_path: r.pdf_local_path,
+        pdf_storage_path: null,
+        invoice_storage_path: null,
+        needs_review: r.needs_review,
+        legacy_row: r.legacy_row,
+        created_at: new Date(2026, 7, 19).toISOString(),
+        updated_at: new Date(2026, 7, 19).toISOString(),
+        deleted_at: null,
+        items: r.items.map((itm) => ({
+          id: itm.id,
+          request_id: itm.request_id,
+          line_no: itm.line_no,
+          name: itm.name,
+          specs: itm.specs,
+          unit: itm.unit,
+          qty: itm.qty,
+          unit_price: itm.unit_price,
+          line_total: itm.line_total,
+          legacy_total: itm.legacy_total,
+          notes: itm.notes
+        }))
+      }));
+      await platform.session.set('spc_registry_requests', JSON.stringify(testRequests));
+      all = await registryService.fetchRequests();
+    }
+
     assert.ok(all.length >= 51, `يجب أن يحتوي السجل على 51 طلباً على الأقل، ووجد ${all.length}`);
 
     // 2. التحقق من الترتيب: التاريخ تنازلياً ثم الرمز
